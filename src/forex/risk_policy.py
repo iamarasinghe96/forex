@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from forex.config import RiskConfig
-from forex.risk import RISK_POLICY_VERSION, RiskPolicy
+from forex.risk import RiskPolicy
 
 
 def policy_from_config(config: RiskConfig) -> RiskPolicy:
@@ -13,7 +13,6 @@ def policy_from_config(config: RiskConfig) -> RiskPolicy:
     thresholds = config.conviction_thresholds
     risks = config.conviction_risk_percent
     return RiskPolicy(
-        policy_version=RISK_POLICY_VERSION,
         max_leverage=config.max_leverage,
         minimum_reward_risk=Decimal(str(config.minimum_reward_risk)),
         max_concurrent_positions=config.max_concurrent_positions,

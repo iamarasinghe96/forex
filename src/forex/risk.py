@@ -11,19 +11,27 @@ import json
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_FLOOR
 from enum import Enum
+from typing import ClassVar
 
 from forex.analysis import Availability, Evidence, Side, TradeCandidate
 from forex.domain import AccountState, SymbolSpec
 
 FUSION_POLICY_VERSION = "layer5-fusion-v1-unvalidated"
-RISK_POLICY_VERSION = "layer5-risk-v1-operator"
+RISK_POLICY_IMPLEMENTATION_VERSION = "layer5-risk-v1"
+
+
+def _canonical_decimal(value: Decimal) -> str:
+    """Serialize equal finite Decimal values identically without float conversion."""
+    if not value.is_finite():
+        raise ValueError("risk policy values must be finite")
+    normalized = value.normalize()
+    return "0" if normalized == 0 else format(normalized, "f")
 
 
 @dataclass(frozen=True)
 class RiskPolicy:
     """Immutable broker-neutral policy populated from operator configuration."""
 
-    policy_version: str
     max_leverage: int
     minimum_reward_risk: Decimal
     max_concurrent_positions: int
@@ -36,9 +44,9 @@ class RiskPolicy:
     medium_risk_percent: Decimal
     high_risk_percent: Decimal
 
+    implementation_version: ClassVar[str] = RISK_POLICY_IMPLEMENTATION_VERSION
+
     def __post_init__(self) -> None:
-        if not self.policy_version:
-            raise ValueError("policy_version must not be empty")
         if self.max_leverage <= 0 or self.max_concurrent_positions <= 0:
             raise ValueError("leverage and position limits must be positive")
         if self.minimum_reward_risk < Decimal("1.5"):
@@ -55,6 +63,25 @@ class RiskPolicy:
             raise ValueError("conviction risk percentages must be within 0..1")
         if not self.low_risk_percent <= self.medium_risk_percent <= self.high_risk_percent:
             raise ValueError("conviction risk percentages must be non-decreasing")
+
+    @property
+    def policy_id(self) -> str:
+        """Content-addressed identity of every setting that affects risk behaviour."""
+        canonical = json.dumps({
+            "daily_loss_limit": _canonical_decimal(self.daily_loss_limit),
+            "high_conviction": _canonical_decimal(self.high_conviction),
+            "high_risk_percent": _canonical_decimal(self.high_risk_percent),
+            "low_risk_percent": _canonical_decimal(self.low_risk_percent),
+            "max_concurrent_positions": self.max_concurrent_positions,
+            "max_leverage": self.max_leverage,
+            "max_simultaneous_risk": _canonical_decimal(self.max_simultaneous_risk),
+            "medium_conviction": _canonical_decimal(self.medium_conviction),
+            "medium_risk_percent": _canonical_decimal(self.medium_risk_percent),
+            "minimum_conviction": _canonical_decimal(self.minimum_conviction),
+            "minimum_reward_risk": _canonical_decimal(self.minimum_reward_risk),
+        }, sort_keys=True, separators=(",", ":"))
+        fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        return f"{self.implementation_version}-{fingerprint}"
 
 
 class ConvictionBand(str, Enum):
@@ -208,7 +235,8 @@ class RiskDecision:
     exposure: ExposureDiagnostics
     flatten_required: bool
     reasons: tuple[RiskBlockReason, ...]
-    risk_policy_version: str = RISK_POLICY_VERSION
+    risk_policy_implementation_version: str
+    risk_policy_id: str
 
     def __post_init__(self) -> None:
         if self.status is DecisionStatus.ELIGIBLE and self.permitted_position_plan is None:
@@ -425,7 +453,8 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
                   "circuit_breaker_triggered": daily.circuit_breaker_triggered,
                   "kill_switch_active": daily.kill_switch_active},
         "positions": canonical_positions,
-        "policy": {"version": policy.policy_version,
+        "policy": {"implementation_version": policy.implementation_version,
+                   "policy_id": policy.policy_id,
                    "max_leverage": policy.max_leverage,
                    "minimum_reward_risk": str(policy.minimum_reward_risk),
                    "max_concurrent_positions": policy.max_concurrent_positions,
@@ -446,7 +475,8 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
     return RiskDecision(identifier, status, conviction, tier, permitted, plan,
                         portfolio.existing_risk,
                         portfolio.existing_risk + proposal, exposure,
-                        daily_result.flatten_required, reasons)
+                        daily_result.flatten_required, reasons,
+                        policy.implementation_version, policy.policy_id)
 
 
 def enforce_layer6_ceiling(plan: PositionRiskPlan, reviewed_volume: Decimal,

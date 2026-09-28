@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
@@ -13,7 +14,7 @@ from forex.domain import AccountMode, AccountState, SymbolSpec
 from forex.config import RiskConfig, load_config
 from forex.persistence import RiskSessionStore
 from forex.risk import (ContextualConviction, DailyRiskState, DecisionStatus, OpenRiskPosition,
-                        PortfolioRiskState, RISK_POLICY_VERSION, RiskBlockReason, RiskPolicy,
+                        PortfolioRiskState, RISK_POLICY_IMPLEMENTATION_VERSION, RiskBlockReason, RiskPolicy,
                         derive_conviction, decide_risk,
                         enforce_layer6_ceiling, evaluate_daily_risk, exposure_diagnostics,
                         protective_stop, risk_tier, size_position)
@@ -22,7 +23,7 @@ from forex.risk_policy import policy_from_config
 D = Decimal
 NOW = datetime(2026, 1, 2, tzinfo=UTC)
 
-POLICY = RiskPolicy(RISK_POLICY_VERSION, 30, D("1.5"), 4, D(".20"), D(".12"),
+POLICY = RiskPolicy(30, D("1.5"), 4, D(".20"), D(".12"),
                     D("55"), D("70"), D("85"), D(".02"), D(".035"), D(".05"))
 
 
@@ -81,11 +82,64 @@ def test_available_context_is_graded_not_unanimity() -> None:
 def test_config_is_exact_policy_source_and_changed_policy_changes_calculation() -> None:
     configured = policy_from_config(load_config(Path("config.yaml")).risk)
     assert configured == POLICY
-    changed = RiskPolicy("fixture", 20, D("2"), 2, D(".10"), D(".05"),
+    changed = RiskPolicy(20, D("2"), 2, D(".10"), D(".05"),
                          D("60"), D("75"), D("90"), D(".01"), D(".02"), D(".03"))
     assert risk_tier(D("55"), changed).risk_percent is None
     assert risk_tier(D("60"), changed).risk_percent == D(".01")
     assert evaluate_daily_risk(DailyRiskState("s", D("100"), D("94")), changed).flatten_required
+
+
+def test_policy_id_is_content_addressed_and_covers_material_policy_values() -> None:
+    reconstructed = RiskPolicy(
+        max_leverage=30,
+        minimum_reward_risk=D("1.500"),
+        max_concurrent_positions=4,
+        max_simultaneous_risk=D("0.200"),
+        daily_loss_limit=D("0.120"),
+        minimum_conviction=D("55.0"),
+        medium_conviction=D("70.00"),
+        high_conviction=D("85"),
+        low_risk_percent=D("0.020"),
+        medium_risk_percent=D("0.0350"),
+        high_risk_percent=D("0.050"),
+    )
+    assert POLICY.policy_id == POLICY.policy_id
+    assert reconstructed.policy_id == POLICY.policy_id
+    assert POLICY.policy_id.startswith(f"{RISK_POLICY_IMPLEMENTATION_VERSION}-")
+    assert replace(POLICY, minimum_conviction=D("54")).policy_id != POLICY.policy_id
+    assert replace(POLICY, low_risk_percent=D(".021")).policy_id != POLICY.policy_id
+    assert replace(POLICY, minimum_reward_risk=D("1.6")).policy_id != POLICY.policy_id
+    assert replace(POLICY, max_simultaneous_risk=D(".19")).policy_id != POLICY.policy_id
+
+
+def test_config_policy_values_and_decision_identity_remain_exact_and_traceable() -> None:
+    configured = policy_from_config(load_config(Path("config.yaml")).risk)
+    assert configured == POLICY
+    assert (configured.minimum_conviction, configured.medium_conviction,
+            configured.high_conviction) == (D("55"), D("70"), D("85"))
+    assert (configured.low_risk_percent, configured.medium_risk_percent,
+            configured.high_risk_percent) == (D(".02"), D(".035"), D(".05"))
+    assert configured.minimum_reward_risk == D("1.5")
+    assert configured.max_concurrent_positions == 4
+    assert configured.max_simultaneous_risk == D(".20")
+    assert configured.daily_loss_limit == D(".12")
+    assert configured.max_leverage == 30
+
+    first = decision()
+    second = decision()
+    assert first.risk_policy_id == configured.policy_id
+    assert first.risk_policy_implementation_version == RISK_POLICY_IMPLEMENTATION_VERSION
+    assert first.decision_id == second.decision_id
+
+    changed = replace(POLICY, minimum_conviction=D("54"))
+    changed_decision = decide_risk(
+        candidate(.15), account(), spec(), D("1.1"), D("1.09"), None,
+        PortfolioRiskState(()), DailyRiskState("session", D("10000"), D("10000")),
+        changed,
+    )
+    assert changed_decision.risk_policy_id == changed.policy_id
+    assert changed_decision.risk_policy_id != first.risk_policy_id
+    assert changed_decision.decision_id != first.decision_id
 
 
 def test_risk_config_validates_threshold_order_and_tier_mapping() -> None:

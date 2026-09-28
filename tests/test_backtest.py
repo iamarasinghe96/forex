@@ -37,10 +37,10 @@ from forex.backtest import (
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe
-from forex.risk import RISK_POLICY_VERSION, RiskPolicy
+from forex.risk import RiskPolicy
 
 START = datetime(2020, 1, 1, tzinfo=UTC)
-POLICY = RiskPolicy(RISK_POLICY_VERSION, 30, Decimal("1.5"), 4, Decimal(".20"),
+POLICY = RiskPolicy(30, Decimal("1.5"), 4, Decimal(".20"),
                     Decimal(".12"), Decimal("55"), Decimal("70"), Decimal("85"),
                     Decimal(".02"), Decimal(".035"), Decimal(".05"))
 
