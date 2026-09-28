@@ -26,6 +26,7 @@ from forex.analysis import (
     Side,
     TradeCandidate,
     analyse_market,
+    prepare_candles,
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe, _require_utc
@@ -254,6 +255,8 @@ def replay_evaluations(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
     """Evaluate after each actual H1 close; future bars are used only for labelled outcomes."""
     ordered_h1 = sorted(h1, key=lambda c: c.timestamp_utc)
     ordered_h4 = sorted(h4, key=lambda c: c.timestamp_utc)
+    prepared_h1 = prepare_candles(ordered_h1, analysis)
+    prepared_h4 = prepare_candles(ordered_h4, analysis)
     results: list[BacktestEvaluation] = []
     for index, candle in enumerate(ordered_h1):
         evaluation_time = candle.timestamp_utc + Timeframe.H1.duration
@@ -264,7 +267,7 @@ def replay_evaluations(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
         try:
             # analyse_market performs its own close-time filtering. Passing immutable history makes
             # this the exact same strategy entry point used by non-research callers.
-            analysed = analyse_market(symbol, ordered_h1, ordered_h4, evaluation_time, analysis)
+            analysed = analyse_market(symbol, prepared_h1, prepared_h4, evaluation_time, analysis)
         except InsufficientDataError:
             continue
         paths = tuple(_forward_path(ordered_h1, index, horizon, outcome_end_utc)

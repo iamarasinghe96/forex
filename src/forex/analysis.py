@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import math
+from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from statistics import fmean, pstdev
 from types import MappingProxyType
+from typing import overload
 from zoneinfo import ZoneInfo
 
 from forex.config import AnalysisConfig
@@ -151,9 +153,69 @@ class AnalysisResult:
     candidate: TradeCandidate | None
 
 
-def closed_candles(candles: Sequence[Candle], evaluation_time: datetime) -> list[Candle]:
+@dataclass(frozen=True)
+class PreparedCandles(Sequence[Candle]):
+    """Immutable replay prefix with causally computed EMA histories; no rounded reseeding."""
+
+    values: tuple[Candle, ...]
+    close_times: tuple[datetime, ...]
+    config_identity: str
+    indicators: tuple[tuple[float, ...], ...]
+    prefix_length: int
+
+    def __len__(self) -> int:
+        return self.prefix_length
+
+    @overload
+    def __getitem__(self, index: int) -> Candle: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[Candle, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> Candle | tuple[Candle, ...]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(self.prefix_length)
+            return tuple(self.values[i] for i in range(start, stop, step))
+        index = index + self.prefix_length if index < 0 else index
+        if not 0 <= index < self.prefix_length:
+            raise IndexError(index)
+        return self.values[index]
+
+    def closed(self, evaluation_time: datetime) -> PreparedCandles:
+        count = bisect_right(self.close_times, evaluation_time, hi=self.prefix_length)
+        return PreparedCandles(self.values, self.close_times, self.config_identity,
+                               self.indicators, count)
+
+
+def prepare_candles(candles: Sequence[Candle], config: AnalysisConfig) -> PreparedCandles:
+    """Validate/deduplicate once and preserve the reference EMA arithmetic exactly."""
+    if not candles:
+        return PreparedCandles((), (), config.model_dump_json(), (), 0)
+    symbol, timeframe = candles[0].symbol, candles[0].timeframe
+    if any(c.symbol != symbol or c.timeframe is not timeframe for c in candles):
+        raise ValueError("candle series must contain one symbol and timeframe")
+    unique = {c.timestamp_utc: c for c in candles}
+    ordered = tuple(unique[key] for key in sorted(unique))
+    closes = [float(c.close) for c in ordered]
+    fast, slow, context, macd_fast, macd_slow = (
+        ema(closes, period) for period in
+        (config.ema_fast, config.ema_slow, config.ema_context,
+         config.macd_fast, config.macd_slow)
+    )
+    line = [a - b for a, b in zip(macd_fast, macd_slow, strict=True)]
+    signal = ema(line, config.macd_signal)
+    return PreparedCandles(
+        ordered, tuple(c.timestamp_utc + timeframe.duration for c in ordered),
+        config.model_dump_json(), tuple(tuple(v) for v in (fast, slow, context, line, signal)),
+        len(ordered),
+    )
+
+
+def closed_candles(candles: Sequence[Candle], evaluation_time: datetime) -> Sequence[Candle]:
     """Return ordered, unique candles whose actual timestamp plus duration is closed."""
     _require_utc(evaluation_time, "evaluation_time")
+    if isinstance(candles, PreparedCandles):
+        return candles.closed(evaluation_time)
     if not candles:
         return []
     symbol, timeframe = candles[0].symbol, candles[0].timeframe
@@ -221,9 +283,30 @@ def feature_state(candles: Sequence[Candle], config: AnalysisConfig) -> FeatureS
                    max(config.return_horizons) + 1, config.macd_slow + config.macd_signal)
     if len(candles) < required:
         raise InsufficientDataError(f"need at least {required} closed candles, found {len(candles)}")
+    prepared = candles if isinstance(candles, PreparedCandles) else None
+    if prepared is not None:
+        if prepared.config_identity != config.model_dump_json():
+            raise ValueError("prepared candle configuration mismatch")
+        # Every non-recursive feature uses only these trailing observations. Recursive
+        # indicators below retain their exact full-history seed and arithmetic order.
+        candles = candles[-max(required, config.structure_window + 1, config.rsi_period + 1, 6):]
     closes = [float(c.close) for c in candles]
-    fast, slow, context = (ema(closes, period) for period in
-                           (config.ema_fast, config.ema_slow, config.ema_context))
+    if prepared is None:
+        fast, slow, context = (ema(closes, period) for period in
+                               (config.ema_fast, config.ema_slow, config.ema_context))
+        fast_value, slow_value, context_value = fast[-1], slow[-1], context[-1]
+        past_fast = fast[-1 - config.slope_lookback]
+        macd_line, macd_signal, macd_hist = macd(
+            closes, config.macd_fast, config.macd_slow, config.macd_signal)
+    else:
+        index = len(prepared) - 1
+        fast_values, slow_values, context_values, lines, signals = prepared.indicators
+        fast_value, slow_value, context_value = (
+            fast_values[index], slow_values[index], context_values[index]
+        )
+        past_fast = fast_values[index - config.slope_lookback]
+        macd_line, macd_signal = lines[index], signals[index]
+        macd_hist = macd_line - macd_signal
     price = closes[-1]
     atr_value = atr(candles, config.atr_period)
     atr_history = [atr(candles[:end], config.atr_period)
@@ -234,19 +317,17 @@ def feature_state(candles: Sequence[Candle], config: AnalysisConfig) -> FeatureS
     movements = sum(abs(closes[i] - closes[i - 1]) for i in range(
         len(closes) - config.structure_window + 1, len(closes)))
     efficiency = abs(closes[-1] - closes[-config.structure_window]) / max(movements, 1e-12)
-    macd_line, macd_signal, macd_hist = macd(
-        closes, config.macd_fast, config.macd_slow, config.macd_signal)
     recent = candles[-1]
     body = abs(float(recent.close - recent.open))
     candle_range = max(float(recent.high - recent.low), 1e-12)
     mean = fmean(closes[-config.structure_window:])
     deviation = pstdev(closes[-config.structure_window:])
     values: dict[str, float] = {
-        "close": price, "ema_fast": fast[-1], "ema_slow": slow[-1],
-        "ema_context": context[-1], "distance_fast_atr": (price - fast[-1]) / atr_value,
-        "distance_slow_atr": (price - slow[-1]) / atr_value,
-        "ema_fast_slow_atr": (fast[-1] - slow[-1]) / atr_value,
-        "ema_slope_atr": (fast[-1] - fast[-1 - config.slope_lookback]) / atr_value,
+        "close": price, "ema_fast": fast_value, "ema_slow": slow_value,
+        "ema_context": context_value, "distance_fast_atr": (price - fast_value) / atr_value,
+        "distance_slow_atr": (price - slow_value) / atr_value,
+        "ema_fast_slow_atr": (fast_value - slow_value) / atr_value,
+        "ema_slope_atr": (fast_value - past_fast) / atr_value,
         "directional_efficiency": efficiency, "rsi": rsi(closes, config.rsi_period),
         "macd": macd_line, "macd_signal": macd_signal, "macd_histogram": macd_hist,
         "atr": atr_value, "atr_normalized": atr_value / price,
@@ -419,3 +500,4 @@ def analyse_market(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
                           "rolling_low": h1_features.values["rolling_low"]}),
         combined, macro, session_context(evaluation_time))
     return AnalysisResult(snapshot, candidate)
+
