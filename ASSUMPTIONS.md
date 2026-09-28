@@ -1,6 +1,6 @@
 # Assumptions and unvalidated values
 
-Layers 1–2 contain no claimed strategy edge and no fabricated historical statistics.
+Layers 1–4 contain no claimed strategy edge and no fabricated historical statistics.
 
 The following operator choices are **unvalidated** rather than empirical strategy parameters:
 
@@ -64,3 +64,43 @@ and counterfactual analysis of both executed and rejected opportunities. Normal 
 not to require manual loss labels. It cannot react to a few losses by blocking trades and cannot
 self-modify live parameters; validated, versioned promotion is mandatory. Layer 3 itself implements no
 backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper runtime, or learner.
+# Layer 4 research assumptions and limitations
+
+* Formal strategy validation requires at least five elapsed years in **both** H1 and H4 for every
+  configured pair. The current real VPS exposes about 0.74 years; this is sufficient only to verify the
+  engine. The gate is not weakened and data is never fabricated.
+* Historical replay invokes Layer 3 `analyse_market` unchanged after each actual H1 close. Visibility is
+  `timestamp + timeframe duration <= evaluation time`; actual stored H4 timestamps are used because IC
+  Markets New-York-close H4 UTC alignment shifts with DST.
+* A signal cannot fill on its decision bar. Research entry is the next available H1 open. Structural
+  stop, 1.5R-or-greater target, 1R breakeven, ATR trailing, and time horizon are explicit UNVALIDATED
+  research policies, not production instructions or account-risk sizing.
+* OHLC has no path ordering. A bar touching stop and target is adverse stop-first in primary results;
+  ambiguity is recorded. Stop adjustments activate after the complete bar that triggers them.
+* Candle `spread` is broker points, not historical tick execution spread. It is used only with captured
+  instrument `point` metadata and is labelled UNVALIDATED. Commission, slippage, swap, and other fees
+  remain UNAVAILABLE unless empirical data is supplied. No values are invented, and the cost model is
+  incomplete for final profitability validation.
+* Forward return/MFE/MAE paths are labelled after decisions. For rejected states they describe market
+  movement from the last closed price only; they are not hypothetical fills or automatically “missed
+  trades.” Rejection counts permit later study of over-restrictive filters.
+* Fold outcomes and forward paths stop at the fold boundary. Unresolved simulations are explicitly
+  `WINDOW_BOUNDARY_CENSORED` and excluded from expectancy rather than closed at an invented price.
+* Candidate and trade frequency are reported with expectancy. The 3–8 trades/week design target is a
+  calibration target, never an acceptance filter. Fewer trades are not presumed safer.
+* Raw hourly candidate states remain intact. Contiguous symbol/side/setup runs are additionally counted
+  as setup episodes; these and independent candidate simulations are not future executable trade counts.
+* Parameter experiments are explicit, bounded, stable-hashed research candidates. `unvalidated-v1`
+  remains unchanged. No winner is written to operator configuration or promoted automatically.
+* Walk-forward folds are deterministic train-then-test intervals. Parameter selection for a fold uses
+  only its train result; subsequent tests remain OOS. A final holdout boundary is excluded from the
+  loop and should not be repeatedly inspected. In-sample and aggregate OOS results remain distinct.
+* Monte Carlo is seeded IID bootstrap resampling of completed normalized trade outcomes. It reports
+  expectancy, cumulative R, drawdown, and win/loss streak distributions. Independence is questionable
+  in regime-driven markets, it creates no fake price history, and it computes no account probability
+  of ruin.
+* Baselines segment direction, pair, setup, regime, session, style, plus candidate/rejection frequency;
+  stored snapshots also retain volatility and feature context. This supports a future closed-loop
+  comparison but implements no diagnosis, veto, recent-loss throttle, or strategy mutation.
+* Layer 4 contains no balance-based sizing, portfolio controls, live execution, broker order calls,
+  LLM/news inference, production journal/dashboard, paper daemon, or deployment implementation.

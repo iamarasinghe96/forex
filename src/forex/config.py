@@ -90,6 +90,33 @@ class AnalysisConfig(BaseModel):
         return self
 
 
+class BacktestConfig(BaseModel):
+    """Explicit, UNVALIDATED Layer 4 research assumptions (never live execution)."""
+
+    forward_horizons_bars: list[int] = Field(default=[6, 24, 120], min_length=1)
+    simulation_horizon_bars: int = Field(default=120, ge=1)
+    reward_risk: float = Field(default=1.5, ge=1.5)
+    breakeven_at_r: float | None = Field(default=1.0, ge=0)
+    atr_trailing_multiple: float | None = Field(default=None, gt=0)
+    ambiguity_policy: Literal["adverse", "ambiguous"] = "adverse"
+    minimum_history_years: float = Field(default=5.0, ge=5.0)
+    monte_carlo_iterations: int = Field(default=1000, ge=1)
+    monte_carlo_seed: int = 26092801
+    train_days: int = Field(default=365 * 2, ge=1)
+    test_days: int = Field(default=180, ge=1)
+    step_days: int = Field(default=180, ge=1)
+    final_holdout_days: int = Field(default=365, ge=0)
+    report_directory: Path = Path("reports/backtest")
+
+    @model_validator(mode="after")
+    def valid_horizons(self) -> BacktestConfig:
+        if any(value < 1 for value in self.forward_horizons_bars):
+            raise ValueError("backtest forward horizons must be positive")
+        if len(set(self.forward_horizons_bars)) != len(self.forward_horizons_bars):
+            raise ValueError("backtest forward horizons must be unique")
+        return self
+
+
 class TelegramConfig(BaseModel):
     enabled: bool
     timeout_seconds: int = Field(gt=0, le=60)
@@ -114,6 +141,7 @@ class AppConfig(BaseModel):
     database: DatabaseConfig
     market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     telegram: TelegramConfig
     risk: RiskConfig
 
