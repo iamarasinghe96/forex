@@ -11,9 +11,9 @@ from pydantic import ValidationError
 
 from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
+from forex.domain import Timeframe
 from forex.errors import OperatorError
 from forex.logging_setup import configure_logging
-from forex.domain import Timeframe
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
 from forex.persistence import CandleStore, initialise_database
 
@@ -53,17 +53,23 @@ def verify_market_data(config_path: Path) -> int:
         store = CandleStore(config.database.path)
         broker = MT5Broker(config.broker, secrets.mt5_password)
         broker.connect()
-        now = datetime.now(UTC)
         for symbol in config.broker.symbols:
             spec = broker.resolve_symbol(symbol)
             tick = broker.tick(spec.broker_name)
-            validate_tick_freshness(tick, now, config.market_data)
+            validation_now = datetime.now(UTC)
+            broker.validate_server_clock(
+                validation_now, config.market_data.server_clock_tolerance_seconds
+            )
+            validate_tick_freshness(tick, validation_now, config.market_data)
             for timeframe in Timeframe:
-                recent = broker.candles(symbol, timeframe, now - timedelta(days=7), now)
-                validate_candle_freshness(recent[-1], now, config.market_data)
+                request_end = datetime.now(UTC)
+                recent = broker.candles(
+                    symbol, timeframe, request_end - timedelta(days=7), request_end
+                )
+                validate_candle_freshness(recent[-1], datetime.now(UTC), config.market_data)
                 store.upsert(recent)
                 report = download_history(
-                    broker, store, symbol, timeframe, config.market_data, end=now
+                    broker, store, symbol, timeframe, config.market_data, end=datetime.now(UTC)
                 )
                 log.info(
                     "%s %s earliest=%s latest=%s candle_count=%s depth_days=%.1f "

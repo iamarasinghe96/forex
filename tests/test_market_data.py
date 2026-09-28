@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from forex import cli
 from forex.broker.mt5 import MT5Broker
 from forex.config import BrokerConfig, MarketDataConfig
 from forex.domain import Candle, Tick, Timeframe
@@ -18,13 +19,13 @@ from forex.persistence import CandleStore
 
 
 def candle(at, timeframe=Timeframe.H1, close="1.1"):
-    return Candle("EURUSD", timeframe, at, Decimal("1"), Decimal("2"), Decimal("0.5"),
+    return Candle("EURUSD", timeframe, at, Decimal(1), Decimal(2), Decimal("0.5"),
                   Decimal(close), 10, 2, 0)
 
 
 def test_candle_validation_and_utc():
     with pytest.raises(ValueError, match="UTC"):
-        candle(datetime(2025, 1, 1))
+        candle(datetime(2025, 1, 1, tzinfo=UTC).replace(tzinfo=None))
     with pytest.raises(ValueError, match="positive"):
         Candle("X", Timeframe.H1, datetime.now(UTC), Decimal(0), Decimal(1), Decimal(1),
                Decimal(1), 0, 0, 0)
@@ -63,21 +64,114 @@ def test_weekend_and_midweek_gaps_are_distinguished():
     assert report.unexplained_missing_bars == 3
 
 
-def test_freshness_ignores_weekend_but_rejects_stale_data():
+def test_summer_weekend_gap_uses_dst_shifted_utc_boundary():
+    config = MarketDataConfig()
+    friday_close = candle(datetime(2026, 9, 25, 20, tzinfo=UTC))
+    sunday_open = candle(datetime(2026, 9, 27, 21, tzinfo=UTC))
+
+    report = detect_gaps([friday_close, sunday_open], config)
+
+    assert report.expected_weekend_gaps == 1
+    assert report.unexplained_gaps == ()
+
+
+def test_tick_freshness_ignores_weekend():
     config = MarketDataConfig()
     friday = datetime(2025, 1, 3, 21, tzinfo=UTC)
     sunday = datetime(2025, 1, 5, 23, tzinfo=UTC)
     validate_tick_freshness(Tick("EURUSD", Decimal(1), Decimal(2), friday), sunday, config)
+
+
+def test_tick_freshness_rejects_stale_data():
+    config = MarketDataConfig()
     with pytest.raises(OperatorError, match="stale"):
         validate_tick_freshness(
             Tick("EURUSD", Decimal(1), Decimal(2), datetime(2025, 1, 6, tzinfo=UTC)),
             datetime(2025, 1, 6, 4, tzinfo=UTC), config,
         )
+
+
+def test_tick_freshness_rejects_future_data():
+    config = MarketDataConfig()
+    with pytest.raises(OperatorError, match="future"):
+        validate_tick_freshness(
+            Tick("EURUSD", Decimal(1), Decimal(2),
+                 datetime(2025, 1, 6, 0, 0, 1, tzinfo=UTC)),
+            datetime(2025, 1, 6, tzinfo=UTC), config,
+        )
+
+
+def test_candle_freshness_rejects_stale_data():
+    config = MarketDataConfig()
     with pytest.raises(OperatorError, match="stale"):
         validate_candle_freshness(
             candle(datetime(2025, 1, 6, tzinfo=UTC), Timeframe.H4),
             datetime(2025, 1, 6, 9, tzinfo=UTC), config,
         )
+
+
+def test_market_data_verification_captures_time_after_tick(monkeypatch, tmp_path):
+    tick_time = datetime(2025, 1, 6, tzinfo=UTC)
+
+    class Clock(datetime):
+        calls = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.calls += 1
+            return tick_time + timedelta(seconds=cls.calls)
+
+    class Broker:
+        def __init__(self, *_args):
+            pass
+
+        def connect(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+        def resolve_symbol(self, _symbol):
+            return SimpleNamespace(broker_name="EURUSD")
+
+        def tick(self, symbol):
+            assert Clock.calls == 0
+            return Tick(symbol, Decimal(1), Decimal(2), tick_time)
+
+        def validate_server_clock(self, _now, _tolerance_seconds):
+            pass
+
+        def candles(self, symbol, timeframe, _start, end):
+            return [candle(end, timeframe)]
+
+    config = SimpleNamespace(
+        broker=SimpleNamespace(symbols=["EURUSD"]),
+        database=SimpleNamespace(path=tmp_path / "data.sqlite3"),
+        market_data=MarketDataConfig(),
+    )
+    report = SimpleNamespace(
+        symbol="EURUSD", earliest_utc=tick_time, latest_utc=tick_time,
+        candle_count=1, depth_days=0.0, approximate_years=0.0,
+        gaps=SimpleNamespace(expected_weekend_gaps=0, unexplained_gaps=()),
+    )
+    validated = []
+
+    def validate_tick(tick, now, market_data):
+        validated.append((tick, now))
+        validate_tick_freshness(tick, now, market_data)
+
+    monkeypatch.setattr(cli, "datetime", Clock)
+    monkeypatch.setattr(cli, "load_config", lambda _path: config)
+    monkeypatch.setattr(cli, "configure_logging", lambda _config: None)
+    monkeypatch.setattr(cli, "Secrets", lambda: SimpleNamespace(mt5_password="secret"))
+    monkeypatch.setattr(cli, "MT5Broker", Broker)
+    monkeypatch.setattr(cli, "validate_tick_freshness", validate_tick)
+    monkeypatch.setattr(cli, "validate_candle_freshness", lambda *_args: None)
+    monkeypatch.setattr(cli, "download_history", lambda *_args, **_kwargs: report)
+
+    assert cli.verify_market_data(tmp_path / "config.yaml") == 0
+    assert validated == [(Tick("EURUSD", Decimal(1), Decimal(2), tick_time),
+                          tick_time + timedelta(seconds=1))]
 
 
 class RatesApi:
@@ -116,7 +210,8 @@ def broker(api):
 
 
 def row(hour, close=1.5):
-    return {"time": int(datetime(2025, 1, 1, hour, tzinfo=UTC).timestamp()), "open": 1.0,
+    # January server time is UTC+2; the adapter normalizes this back to the requested UTC hour.
+    return {"time": int(datetime(2025, 1, 1, hour + 2, tzinfo=UTC).timestamp()), "open": 1.0,
             "high": 2.0, "low": 0.5, "close": close, "tick_volume": 1, "spread": 2,
             "real_volume": 0}
 
@@ -138,7 +233,8 @@ def test_candle_range_and_repeated_empty_fail_loudly():
         subject.candles("EURUSD", Timeframe.H1, datetime(2025, 1, 1, tzinfo=UTC),
                         datetime(2025, 1, 2, tzinfo=UTC))
     with pytest.raises(OperatorError, match="UTC-aware"):
-        subject.candles("EURUSD", Timeframe.H1, datetime(2025, 1, 1),
+        subject.candles("EURUSD", Timeframe.H1,
+                        datetime(2025, 1, 1, tzinfo=UTC).replace(tzinfo=None),
                         datetime(2025, 1, 2, tzinfo=UTC))
 
 
