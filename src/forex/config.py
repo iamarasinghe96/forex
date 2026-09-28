@@ -46,6 +46,17 @@ class DatabaseConfig(BaseModel):
     path: Path
 
 
+class MarketDataConfig(BaseModel):
+    stale_h1_hours: int = Field(default=3, gt=0)
+    stale_h4_hours: int = Field(default=8, gt=0)
+    weekend_close_weekday: int = Field(default=4, ge=0, le=6)
+    weekend_close_hour_utc: int = Field(default=22, ge=0, le=23)
+    weekend_open_weekday: int = Field(default=6, ge=0, le=6)
+    weekend_open_hour_utc: int = Field(default=22, ge=0, le=23)
+    history_chunk_days: int = Field(default=90, ge=7, le=366)
+    history_retry_count: int = Field(default=3, ge=1, le=10)
+
+
 class TelegramConfig(BaseModel):
     enabled: bool
     timeout_seconds: int = Field(gt=0, le=60)
@@ -68,6 +79,7 @@ class AppConfig(BaseModel):
     broker: BrokerConfig
     logging: LoggingConfig
     database: DatabaseConfig
+    market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
     telegram: TelegramConfig
     risk: RiskConfig
 

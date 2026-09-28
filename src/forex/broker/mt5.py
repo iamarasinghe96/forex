@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import ModuleType
 from typing import Any
 
 from forex.broker.base import Broker
 from forex.config import BrokerConfig
-from forex.domain import AccountMode, AccountState, SymbolSpec, Tick
+from forex.domain import AccountMode, AccountState, Candle, SymbolSpec, Tick, Timeframe
 from forex.errors import OperatorError
 
 
@@ -161,10 +161,62 @@ class MT5Broker(Broker):
                 "has a usable live quote. Add the conversion pair to MT5 Market Watch, then retry."
             ) from exc
 
-    # These methods define the complete adapter boundary now, but deliberate operator-facing
-    # implementations arrive with their owning layers rather than pretending Layer 1 can trade.
-    def candles(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> list[Any]:
-        raise NotImplementedError("Candle retrieval is implemented in Layer 2; do not run live yet.")
+    def timeframe_constant(self, timeframe: Timeframe) -> int:
+        """Map broker-neutral timeframes explicitly to MT5 constants."""
+        mapping = {
+            Timeframe.H1: self.api.TIMEFRAME_H1,
+            Timeframe.H4: self.api.TIMEFRAME_H4,
+        }
+        return int(mapping[timeframe])
+
+    def candles(
+        self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime
+    ) -> list[Candle]:
+        return self._candles(symbol, timeframe, start, end, allow_empty=False)
+
+    def _candles(
+        self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime,
+        *, allow_empty: bool, retries: int = 3,
+    ) -> list[Candle]:
+        for label, value in (("start", start), ("end", end)):
+            if value.tzinfo is None or value.utcoffset() is None or value.utcoffset() != timedelta(0):
+                raise OperatorError(f"Candle {label} must be a UTC-aware datetime.")
+        if start >= end:
+            raise OperatorError("Candle start must be earlier than end.")
+        resolved = self.resolve_symbol(symbol)
+        rows: Any = None
+        for _ in range(retries):
+            rows = self.api.copy_rates_range(
+                resolved.broker_name, self.timeframe_constant(timeframe), start, end
+            )
+            if rows is not None and len(rows) > 0:
+                break
+        if rows is None or len(rows) == 0:
+            if allow_empty:
+                return []
+            code, detail = self.api.last_error()
+            raise OperatorError(
+                f"MT5 returned no {timeframe.value} candles for {symbol} after {retries} attempts "
+                f"({code}: {detail}). Check the market connection, open the chart, increase "
+                "Tools > Options > Charts > Max bars in chart, and retry."
+            )
+        by_time: dict[datetime, Candle] = {}
+        try:
+            for row in rows:
+                timestamp = datetime.fromtimestamp(float(row["time"]), tz=UTC)
+                candle = Candle.from_values(
+                    symbol.upper(), timeframe, timestamp, row["open"], row["high"], row["low"],
+                    row["close"], row["tick_volume"], row["spread"], row["real_volume"],
+                )
+                by_time[timestamp] = candle
+        except (ArithmeticError, KeyError, TypeError, ValueError) as exc:
+            raise OperatorError(
+                f"MT5 returned malformed {timeframe.value} candle data for {symbol}: {exc}. "
+                "Reconnect MT5 and do not use this data."
+            ) from exc
+        return [by_time[key] for key in sorted(by_time)]
+
+    # Trading methods remain deliberately unavailable; Layer 2 is read-only.
 
     def place_order(self, request: Any) -> Any:
         raise NotImplementedError("Order placement is implemented in Layer 7; Layer 1 cannot trade.")

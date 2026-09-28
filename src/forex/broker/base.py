@@ -8,7 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from forex.domain import AccountState, SymbolSpec, Tick
+from forex.domain import AccountState, Candle, SymbolSpec, Tick, Timeframe
 
 
 class Broker(ABC):
@@ -28,7 +28,9 @@ class Broker(ABC):
     def pip_value_per_lot(self, spec: SymbolSpec, account_currency: str) -> Decimal: ...
 
     @abstractmethod
-    def candles(self, symbol: str, timeframe: str, start: datetime, end: datetime) -> Sequence[Any]: ...
+    def candles(
+        self, symbol: str, timeframe: Timeframe, start: datetime, end: datetime
+    ) -> Sequence[Candle]: ...
 
     @abstractmethod
     def place_order(self, request: Any) -> Any: ...

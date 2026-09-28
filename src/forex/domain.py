@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 
@@ -11,6 +11,69 @@ from enum import Enum
 class AccountMode(str, Enum):
     HEDGING = "hedging"
     NETTING = "netting"
+
+
+class Timeframe(str, Enum):
+    H1 = "H1"
+    H4 = "H4"
+
+    @property
+    def duration(self) -> timedelta:
+        return timedelta(hours=1 if self is Timeframe.H1 else 4)
+
+
+def _require_utc(value: datetime, field: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field} must be timezone-aware UTC")
+    if value.utcoffset() != timedelta(0):
+        raise ValueError(f"{field} must use UTC")
+
+
+def _integer(value: object, field: str) -> int:
+    converted = Decimal(str(value))
+    if converted != converted.to_integral_value():
+        raise ValueError(f"{field} must be an integer")
+    return int(converted)
+
+
+@dataclass(frozen=True)
+class Candle:
+    symbol: str
+    timeframe: Timeframe
+    timestamp_utc: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    tick_volume: int
+    spread: int
+    real_volume: int
+
+    def __post_init__(self) -> None:
+        _require_utc(self.timestamp_utc, "timestamp_utc")
+        if not self.symbol:
+            raise ValueError("symbol must not be empty")
+        prices = (self.open, self.high, self.low, self.close)
+        if any(not price.is_finite() or price <= 0 for price in prices):
+            raise ValueError("OHLC prices must be finite and positive")
+        if self.high < max(prices) or self.low > min(prices):
+            raise ValueError("candle high/low does not contain its OHLC prices")
+        if any(value < 0 for value in (self.tick_volume, self.spread, self.real_volume)):
+            raise ValueError("candle volume and spread fields must be non-negative")
+
+    @classmethod
+    def from_values(
+        cls, symbol: str, timeframe: Timeframe, timestamp: datetime, open_: object,
+        high: object, low: object, close: object, tick_volume: object, spread: object,
+        real_volume: object,
+    ) -> Candle:
+        """Normalize a source timestamp to UTC and validate all source fields."""
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("source candle timestamp must be timezone-aware")
+        return cls(symbol, timeframe, timestamp.astimezone(UTC), Decimal(str(open_)),
+                   Decimal(str(high)), Decimal(str(low)), Decimal(str(close)),
+                   _integer(tick_volume, "tick_volume"), _integer(spread, "spread"),
+                   _integer(real_volume, "real_volume"))
 
 
 @dataclass(frozen=True)
