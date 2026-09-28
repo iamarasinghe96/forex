@@ -1,18 +1,31 @@
-# Forex Operator — Layer 1 Foundation
+# Forex Operator — Layer 2 Market Data
 
-This repository currently provides the safe foundation and MT5 read-only verification command.
-It **cannot place, change, or close an order**. Later layers must not be assumed to exist.
+Layer 2 adds read-only, broker-neutral H1/H4 candle collection for EURUSD, GBPUSD, and USDJPY,
+SQLite storage, stale-feed protection, and gap reporting. It contains no indicators, strategy,
+risk sizing, or order execution and makes no claim of a trading edge.
 
-## Windows demo verification
+## Windows demo setup and verification
 
-1. Install 64-bit Python 3.12 and MetaTrader 5, then log into the demo account in MT5.
-2. Open PowerShell in this folder and run `py -3.12 -m venv .venv`.
-3. Run `.venv\Scripts\python -m pip install -e ".[mt5,dev]"`.
-4. Copy `.env.example` to `.env`; put the demo trading password only in that local file.
-5. Confirm `config.yaml` contains the correct login, server, and expected account currency.
-6. Enable the **Algo Trading** toolbar button. Layer 1 sends no orders, but checking this now catches
-   the exact client condition that later produces MT5 retcode 10027.
-7. Run `.venv\Scripts\forex verify-foundation`.
+From PowerShell, with 64-bit Python 3.12 or 3.13 and MetaTrader 5 logged into the configured demo:
 
-Success prints the account facts and the broker-resolved name, pip size, runtime AUD pip value,
-tick properties, and filling mode for every configured pair. It ends with **No order was sent**.
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[mt5,dev]"
+.\.venv\Scripts\forex.exe verify-foundation
+.\.venv\Scripts\forex.exe verify-market-data
+```
+
+Put the demo trading password only in the ignored `.env` file. The market-data command verifies
+fresh ticks and recent candles, then downloads every H1/H4 chunk currently exposed by MT5 into the
+configured SQLite database. Success ends with:
+
+```text
+Layer 2 verification passed. Historical candles were saved; no order was sent.
+```
+
+Each series reports its actual earliest/latest UTC times, candle count, depth in days/years, expected
+weekend gaps, and unexplained gaps. A warning below five years means later backtesting lacks its
+desired depth; it is not filled, purchased, or fabricated. MT5 availability depends on the broker,
+terminal cache, loaded charts, and **Tools → Options → Charts → Max bars in chart**. Increase that
+setting, restart/load each chart, and rerun safely; SQLite upserts are idempotent and can update the
+forming candle.

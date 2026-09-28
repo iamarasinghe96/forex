@@ -19,6 +19,17 @@ logging:
 database:
   path: data/forex.sqlite3
 
+# Layer 2 operational defaults; these are not validated strategy parameters.
+market_data:
+  stale_h1_hours: 3
+  stale_h4_hours: 8
+  weekend_close_weekday: 4      # Friday (Monday=0), approximate and not DST-validated.
+  weekend_close_hour_utc: 22
+  weekend_open_weekday: 6       # Sunday, approximate and not DST-validated.
+  weekend_open_hour_utc: 22
+  history_chunk_days: 90
+  history_retry_count: 3
+
 telegram:
   enabled: false
   timeout_seconds: 10
