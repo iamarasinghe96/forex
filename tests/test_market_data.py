@@ -18,13 +18,13 @@ from forex.persistence import CandleStore
 
 
 def candle(at, timeframe=Timeframe.H1, close="1.1"):
-    return Candle("EURUSD", timeframe, at, Decimal("1"), Decimal("2"), Decimal("0.5"),
+    return Candle("EURUSD", timeframe, at, Decimal(1), Decimal(2), Decimal("0.5"),
                   Decimal(close), 10, 2, 0)
 
 
 def test_candle_validation_and_utc():
     with pytest.raises(ValueError, match="UTC"):
-        candle(datetime(2025, 1, 1))
+        candle(datetime(2025, 1, 1, tzinfo=UTC).replace(tzinfo=None))
     with pytest.raises(ValueError, match="positive"):
         Candle("X", Timeframe.H1, datetime.now(UTC), Decimal(0), Decimal(1), Decimal(1),
                Decimal(1), 0, 0, 0)
@@ -138,7 +138,8 @@ def test_candle_range_and_repeated_empty_fail_loudly():
         subject.candles("EURUSD", Timeframe.H1, datetime(2025, 1, 1, tzinfo=UTC),
                         datetime(2025, 1, 2, tzinfo=UTC))
     with pytest.raises(OperatorError, match="UTC-aware"):
-        subject.candles("EURUSD", Timeframe.H1, datetime(2025, 1, 1),
+        subject.candles("EURUSD", Timeframe.H1,
+                        datetime(2025, 1, 1, tzinfo=UTC).replace(tzinfo=None),
                         datetime(2025, 1, 2, tzinfo=UTC))
 
 

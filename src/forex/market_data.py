@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 from forex.broker.mt5 import MT5Broker
 from forex.config import MarketDataConfig
@@ -57,7 +58,7 @@ def detect_gaps(candles: list[Candle], config: MarketDataConfig) -> GapReport:
     ordered = sorted({c.timestamp_utc: c for c in candles}.values(), key=lambda c: c.timestamp_utc)
     expected_events = expected_bars = 0
     unexplained: list[Gap] = []
-    for previous, following in zip(ordered, ordered[1:]):
+    for previous, following in pairwise(ordered):
         duration = previous.timeframe.duration
         missing = int((following.timestamp_utc - previous.timestamp_utc) / duration) - 1
         if missing <= 0:
