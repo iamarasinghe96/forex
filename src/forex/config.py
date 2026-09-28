@@ -58,6 +58,38 @@ class MarketDataConfig(BaseModel):
     server_clock_tolerance_seconds: int = Field(default=300, gt=0, le=3600)
 
 
+class AnalysisConfig(BaseModel):
+    """UNVALIDATED Layer 3 research starting points; Layer 4 may vary every field."""
+
+    strategy_version: str = "layer3-v1"
+    parameter_version: str = "unvalidated-v1"
+    ema_fast: int = Field(default=20, ge=2)
+    ema_slow: int = Field(default=50, ge=3)
+    ema_context: int = Field(default=200, ge=4)
+    rsi_period: int = Field(default=14, ge=2)
+    macd_fast: int = Field(default=12, ge=2)
+    macd_slow: int = Field(default=26, ge=3)
+    macd_signal: int = Field(default=9, ge=2)
+    atr_period: int = Field(default=14, ge=2)
+    structure_window: int = Field(default=20, ge=3)
+    volatility_window: int = Field(default=100, ge=10)
+    slope_lookback: int = Field(default=5, ge=1)
+    return_horizons: list[int] = Field(default=[1, 5, 20], min_length=1)
+    trend_threshold: float = Field(default=0.55, ge=0, le=1)
+    range_threshold: float = Field(default=0.58, ge=0, le=1)
+    setup_score_threshold: float = Field(default=0.45, ge=0, le=1)
+    extreme_zscore: float = Field(default=1.0, gt=0)
+    swing_trend_threshold: float = Field(default=0.68, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def ordered_periods(self) -> AnalysisConfig:
+        if not self.ema_fast < self.ema_slow < self.ema_context:
+            raise ValueError("analysis EMA periods must satisfy fast < slow < context")
+        if self.macd_fast >= self.macd_slow:
+            raise ValueError("analysis MACD fast period must be below slow period")
+        return self
+
+
 class TelegramConfig(BaseModel):
     enabled: bool
     timeout_seconds: int = Field(gt=0, le=60)
@@ -81,6 +113,7 @@ class AppConfig(BaseModel):
     logging: LoggingConfig
     database: DatabaseConfig
     market_data: MarketDataConfig = Field(default_factory=MarketDataConfig)
+    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     telegram: TelegramConfig
     risk: RiskConfig
 

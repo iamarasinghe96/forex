@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from forex.analysis import InsufficientDataError, analyse_market
 from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
 from forex.domain import Timeframe
@@ -98,13 +99,72 @@ def verify_market_data(config_path: Path) -> int:
             broker.disconnect()
 
 
+def verify_analysis(config_path: Path) -> int:
+    """Analyse stored closed candles only; never connects to MT5 or execution code."""
+    config = load_config(config_path)
+    configure_logging(config)
+    log = logging.getLogger("forex.analysis")
+    store = CandleStore(config.database.path)
+    evaluation_time = datetime.now(UTC)
+    for symbol in config.broker.symbols:
+        h1 = store.load(symbol, Timeframe.H1)
+        h4 = store.load(symbol, Timeframe.H4)
+        if not h1 or not h4:
+            raise OperatorError(
+                f"Stored H1/H4 history for {symbol} is missing. Run `forex verify-market-data` "
+                "while MT5 is connected, then retry; analysis did not fetch or trade."
+            )
+        validate_candle_freshness(h1[-1], evaluation_time, config.market_data)
+        validate_candle_freshness(h4[-1], evaluation_time, config.market_data)
+        try:
+            result = analyse_market(symbol, h1, h4, evaluation_time, config.analysis)
+        except InsufficientDataError as exc:
+            raise OperatorError(
+                f"Stored history for {symbol} cannot support configured analysis windows: {exc}. "
+                "Run `forex verify-market-data`, then retry; no data was fabricated."
+            ) from exc
+        snapshot = result.snapshot
+        log.info(
+            "%s evaluation=%s last_closed_h1=%s last_closed_h4=%s regime=%s "
+            "directional=%.3f volatility=%.3f setup=%s style=%s candidate=%s direction=%s "
+            "macro=%s strategy=%s parameters=%s",
+            symbol, snapshot.evaluation_time_utc.isoformat(),
+            snapshot.last_closed_h1_utc.isoformat(), snapshot.last_closed_h4_utc.isoformat(),
+            snapshot.regime.label.value, snapshot.regime.directional_bias,
+            snapshot.volatility_state,
+            snapshot.setup_type.value if snapshot.setup_type else "NONE",
+            snapshot.trade_style.value if snapshot.trade_style else "NONE",
+            "YES" if snapshot.candidate_generated else "NO",
+            snapshot.direction.value if snapshot.direction else "NONE",
+            snapshot.macro_context.availability.value, snapshot.strategy_version,
+            snapshot.parameter_version,
+        )
+        if snapshot.supporting_evidence:
+            log.info("%s supporting=%s", symbol, ", ".join(
+                f"{item.code}({item.strength:.2f})" for item in snapshot.supporting_evidence))
+        if snapshot.opposing_evidence:
+            log.info("%s opposing=%s", symbol, ", ".join(
+                f"{item.code}({item.strength:.2f})" for item in snapshot.opposing_evidence))
+        if snapshot.no_candidate_reason:
+            log.info("%s no-candidate reason=%s", symbol, snapshot.no_candidate_reason)
+    log.info("Layer 3 analysis verification passed. Stored data only; no order was sent.")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
-    parser.add_argument("command", choices=["verify-foundation", "verify-market-data"])
+    parser.add_argument(
+        "command", choices=["verify-foundation", "verify-market-data", "verify-analysis"]
+    )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     args = parser.parse_args()
     try:
-        command = verify if args.command == "verify-foundation" else verify_market_data
+        commands = {
+            "verify-foundation": verify,
+            "verify-market-data": verify_market_data,
+            "verify-analysis": verify_analysis,
+        }
+        command = commands[args.command]
         raise SystemExit(command(args.config))
     except OperatorError as exc:
         logging.getLogger("forex").critical("%s", exc)

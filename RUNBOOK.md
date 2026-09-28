@@ -1,6 +1,6 @@
 # Operator runbook
 
-> Current delivery: Layer 2 read-only market data. The software cannot trade. Instructions for unattended trading,
+> Current delivery: Layer 3 read-only analysis. The software cannot trade. Instructions for unattended trading,
 > remote flattening, backups, service recovery, and updates will be completed in their owning layers.
 
 ## First-time setup and verification
@@ -57,3 +57,29 @@ Live IC Markets verification must run on Windows because MetaTrader5 is Windows-
 depth and the approximate weekend/DST boundary remain environment-dependent. No strategy, risk
 execution, reconciliation, Firestore, dashboard, or service automation has been implemented. Do not
 use this repository to trade until those layers are delivered and the paper soak is complete.
+
+## Layer 3 stored-history verification
+
+Run `.\.venv\Scripts\forex.exe verify-analysis` after `verify-market-data`. It is repeatable, reads
+SQLite only, filters forming bars, and cannot place or modify an order. Review each pair's last closed
+H1/H4 timestamps, regime, context, evidence and candidate/no-candidate explanation. `UNAVAILABLE`
+macro is expected until a later genuine provider exists and is not an error or technical veto.
+
+If the command reports missing, insufficient, or stale candles, open and connect MT5 and run
+`.\.venv\Scripts\forex.exe verify-market-data`, then rerun analysis. Do not pad history. The current
+roughly 0.74-year broker sample is sufficient to exercise analysis but cannot validate an edge; the
+five-year historical/backtest requirement belongs to Layer 4.
+
+## Future closed-loop contract
+
+Snapshots deliberately retain rejected/non-triggered opportunities as well as candidates. Later
+performance intelligence can join versions and deterministic IDs to outcomes and price paths, infer
+multi-label evidence-backed attribution (including regime change, signal failure, timing, false
+breakout, volatility/macro shock, spread/slippage and normal variance), and evaluate counterfactual
+filter value without routine manual post-trade tagging.
+
+That future learning component is analytical/research infrastructure, **not a reactive trade blocker**.
+Recent losses cannot directly veto a trade, reduce every score, disable a setup, or mutate live weights.
+Any behavior change must pass versioned historical, walk-forward, out-of-sample and shadow/paper
+validation before promotion. It must detect over-conservatism and under-trading by studying rejected
+opportunities, not optimize merely for fewer losses. No learning engine is implemented in Layer 3.
