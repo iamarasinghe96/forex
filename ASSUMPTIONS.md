@@ -141,3 +141,6 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
   alignment hour (0–3); incomplete groups remain gaps. It is not IC Markets broker-native H4.
 - Unavailable spread/volume maps to the legacy candle model's zero while provenance marks it
   unavailable. This is not a zero transaction-cost or genuine-volume claim.
+- Candle and provenance writes share one transaction. A research database is homogeneous in provider,
+  release, price/time/alignment, spread and volume semantics; incompatible sources require another
+  database. Research reports include a deterministic provenance fingerprint and use a distinct file.

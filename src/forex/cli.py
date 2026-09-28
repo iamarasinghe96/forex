@@ -27,7 +27,7 @@ from forex.domain import Timeframe
 from forex.errors import OperatorError
 from forex.logging_setup import configure_logging
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
-from forex.history import import_csv, verify_database
+from forex.history import import_csv, validate_research_database, verify_database
 from forex.persistence import CandleStore, initialise_database
 from forex.risk import DailyRiskState, PortfolioRiskState, decide_risk
 from forex.risk_policy import policy_from_config
@@ -171,6 +171,11 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
     configure_logging(config)
     log = logging.getLogger("forex.backtest")
     store = CandleStore(database or config.database.path)
+    research_dataset = None
+    if database is not None:
+        research_dataset, _ = validate_research_database(
+            database, config.broker.symbols, config.market_data
+        )
     policy = policy_from_config(config.risk)
     gates = {}
     metrics = {}
@@ -235,9 +240,13 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
             "simulations are research measures; none is a future live-order count."
         ),
     }
-    baseline = StrategyBaseline(max(latest_closed), status, gates, metrics, simulations, False,
-                                protocols, assumptions, warnings)
-    report_path = config.backtest.report_directory / "strategy-baseline.json"
+    baseline = StrategyBaseline(
+        max(latest_closed), status, gates, metrics, simulations, False, protocols, assumptions,
+        warnings, asdict(research_dataset) if research_dataset else None,
+    )
+    report_name = (f"research-baseline-{research_dataset.fingerprint}.json"
+                   if research_dataset else "strategy-baseline.json")
+    report_path = config.backtest.report_directory / report_name
     write_json_report(report_path, baseline)
     for warning in warnings:
         log.warning("%s", warning)

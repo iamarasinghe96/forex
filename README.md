@@ -179,6 +179,10 @@ records provider/release, pair, granularity, UTC, price type, spread/volume avai
 row count, import time, transformations, input hash and H4 policy. H4 uses only four complete H1 bars
 under an explicit fixed UTC alignment hour; it is not claimed equivalent to IC Markets broker-native
 DST-dependent H4. Missing spread is provenance-marked unavailable, not a zero-cost assumption.
+H1, H4, and provenance are committed in one SQLite transaction. Identical re-import returns the
+original persisted import timestamp; changed metadata for the same identity, or any incompatible feed
+semantics elsewhere in the database, is rejected. Claimed spread or volume requires a populated CSV
+column on every row.
 
 ```powershell
 .\.venv\Scripts\forex.exe import-history --research-database data\research.sqlite3 --file data\EURUSD.csv --dataset RELEASE_ID --provider PROVIDER --symbol EURUSD --price-type midpoint --volume-semantics unavailable --h4-alignment-hour-utc 0
@@ -188,3 +192,6 @@ DST-dependent H4. Missing spread is provenance-marked unavailable, not a zero-co
 
 Import all configured symbols only after independently verifying provider and licence. Five years only
 makes formal validation eligible; it does not validate the strategy or relax any existing protocol.
+Research replay first verifies provenance and writes `research-baseline-<fingerprint>.json`, leaving
+the broker-native baseline untouched. The report binds results to the release/provider, symbols,
+source hashes, semantics, alignment, coverage, and deterministic dataset fingerprint.

@@ -176,3 +176,7 @@ Use `--spread-available` only with documented spread semantics. Review coverage,
 closures and unexplained gaps. Keep the IC Markets database unchanged. A conflict requires a separate
 database, never an overwrite. Exit code 3 remains the insufficient-history result; eligibility is not
 strategy approval.
+Import is atomic across H1, H4 and provenance. Re-importing the same bytes and metadata is a no-op that
+retains the first import timestamp; metadata conflicts fail. `verify-history` refuses missing or mixed
+provenance, and research replay produces a fingerprinted report rather than replacing
+`strategy-baseline.json`.

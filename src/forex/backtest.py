@@ -744,6 +744,7 @@ class StrategyBaseline:
     walk_forward_protocol: Mapping[str, WalkForwardResult]
     assumptions: Mapping[str, object]
     warnings: tuple[str, ...]
+    research_dataset: Mapping[str, object] | None = None
 
 
 def _jsonable(value: Any) -> Any:
