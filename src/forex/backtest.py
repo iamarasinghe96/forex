@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import random
+from bisect import bisect_left
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
@@ -26,6 +27,7 @@ from forex.analysis import (
     Side,
     TradeCandidate,
     analyse_market,
+    prepare_candles,
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe, _require_utc
@@ -254,6 +256,8 @@ def replay_evaluations(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
     """Evaluate after each actual H1 close; future bars are used only for labelled outcomes."""
     ordered_h1 = sorted(h1, key=lambda c: c.timestamp_utc)
     ordered_h4 = sorted(h4, key=lambda c: c.timestamp_utc)
+    prepared_h1 = prepare_candles(ordered_h1, analysis)
+    prepared_h4 = prepare_candles(ordered_h4, analysis)
     results: list[BacktestEvaluation] = []
     for index, candle in enumerate(ordered_h1):
         evaluation_time = candle.timestamp_utc + Timeframe.H1.duration
@@ -264,7 +268,7 @@ def replay_evaluations(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
         try:
             # analyse_market performs its own close-time filtering. Passing immutable history makes
             # this the exact same strategy entry point used by non-research callers.
-            analysed = analyse_market(symbol, ordered_h1, ordered_h4, evaluation_time, analysis)
+            analysed = analyse_market(symbol, prepared_h1, prepared_h4, evaluation_time, analysis)
         except InsufficientDataError:
             continue
         paths = tuple(_forward_path(ordered_h1, index, horizon, outcome_end_utc)
@@ -385,8 +389,21 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
 def simulate_candidates(evaluations: Sequence[BacktestEvaluation], h1: Sequence[Candle],
                         config: BacktestConfig, cost_model: CostModel | None = None,
                         outcome_end_utc: datetime | None = None) -> tuple[SimulationAttempt, ...]:
-    return tuple(simulate_trade_attempt(item.candidate, h1, config, cost_model, outcome_end_utc)
-                 for item in evaluations if item.candidate is not None)
+    ordered = sorted(h1, key=lambda candle: candle.timestamp_utc)
+    timestamps = [candle.timestamp_utc for candle in ordered]
+    attempts = []
+    for item in evaluations:
+        if item.candidate is None:
+            continue
+        start = bisect_left(timestamps, item.candidate.evaluation_time_utc)
+        # The simulator can consume at most the configured horizon. Keep the first
+        # future bar even across the outcome boundary so censoring remains distinct
+        # from NO_NEXT_BAR. No future bars or fills are invented.
+        future = ordered[start:start + config.simulation_horizon_bars]
+        attempts.append(simulate_trade_attempt(
+            item.candidate, future, config, cost_model, outcome_end_utc,
+        ))
+    return tuple(attempts)
 
 
 def _streak(values: Sequence[float], predicate: Callable[[float], bool]) -> int:

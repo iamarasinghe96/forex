@@ -92,6 +92,11 @@ windows only; these commands do not execute fold selection or measure aggregate 
 An exit code of zero from `validate-backtest` establishes the history-depth gate and successful
 engine replay, not strategy approval. Generated research reports remain local and are ignored by Git.
 
+Historical replay prepares immutable, ordered candle prefixes and recursive EMA/MACD histories once.
+The same `analyse_market` entry point consumes only the prefix closed at each decision time. Recursive
+indicators retain the original full-history seed and arithmetic; finite-window features retain their
+original windows. The ordinary sequence path remains available as the reference implementation.
+
 At each event, evaluation time is the actual H1 timestamp plus one hour. Layer 3 independently filters
 H1 and H4 to candles whose actual timestamp plus duration is closed, so forming candles and future H4
 states cannot leak in. No UTC modulo rule is used for H4. Forward paths are attached only after the

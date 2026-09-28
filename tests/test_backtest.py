@@ -34,6 +34,7 @@ from forex.backtest import (
     replay_evaluations,
     run_backtest,
     run_walk_forward,
+    simulate_candidates,
     simulate_trade,
     simulate_trade_attempt,
 )
@@ -115,6 +116,36 @@ def candidate(side: Side = Side.LONG, evaluation: datetime = START) -> TradeCand
         "unvalidated-v1", regime, .8, MappingProxyType({"score": .8}), .4,
         MappingProxyType({}), (), (), .2, levels, features, macro, ("LONDON",),
     )
+
+
+def test_prepared_replay_matches_reference_metrics_and_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h1 = series(1000, Timeframe.H1)
+    h4 = series(260, Timeframe.H4, offset_hours=2)
+    arguments = ("EURUSD", h1, h4, AnalysisConfig(), BacktestConfig(), POLICY)
+    cutoff = START + timedelta(hours=950)
+    prepared = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    monkeypatch.setattr("forex.backtest.prepare_candles", lambda candles, config: candles)
+    reference = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    assert prepared == reference
+
+
+@pytest.mark.parametrize("boundary_hours", [None, 1, 4, 10])
+def test_bounded_simulation_inputs_match_full_history(
+    monkeypatch: pytest.MonkeyPatch, boundary_hours: int | None,
+) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    h1 = [candle(i, open_=1, high=1.05, low=.95, close=1) for i in range(8)]
+    research = BacktestConfig(simulation_horizon_bars=3, breakeven_at_r=None)
+    evaluations = replay_evaluations("EURUSD", h1, [candle(0, Timeframe.H4)],
+                                     AnalysisConfig(), research)
+    boundary = START + timedelta(hours=boundary_hours) if boundary_hours is not None else None
+    expected = tuple(simulate_trade_attempt(item.candidate, h1, research,
+                                            outcome_end_utc=boundary)
+                     for item in evaluations if item.candidate is not None)
+    assert simulate_candidates(evaluations, list(reversed(h1)), research,
+                               outcome_end_utc=boundary) == expected
 
 
 def test_replay_is_sequential_excludes_forming_bars_and_uses_real_h4_alignment() -> None:
