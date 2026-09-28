@@ -192,16 +192,21 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
             )
         gate = history_gate(h1, h4, config.backtest.minimum_history_years)
         gates[symbol] = gate
-        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest, policy)
-        metrics[symbol] = result.metrics
-        simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
-                                           config.backtest.monte_carlo_seed)
-                               if result.trades else None)
         if gate.earliest_utc is None or gate.latest_utc is None:
             raise OperatorError(f"Unable to determine stored history coverage for {symbol}.")
         protocols[symbol] = build_walk_forward_folds(
             gate.earliest_utc, gate.latest_utc, config.backtest
         )
+        research_end = protocols[symbol].final_holdout_start_utc
+        log.info("%s replay starting; reserved holdout starts at %s", symbol, research_end)
+        result = run_backtest(
+            symbol, h1, h4, config.analysis, config.backtest, policy,
+            evaluation_end_utc=research_end, outcome_end_utc=research_end,
+        )
+        metrics[symbol] = result.metrics
+        simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
+                                           config.backtest.monte_carlo_seed)
+                               if result.trades else None)
         latest_closed.append(result.evaluations[-1].snapshot.evaluation_time_utc
                              if result.evaluations else h1[-1].timestamp_utc)
         log.info(
@@ -225,8 +230,12 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
         "Commission, slippage, swap and other broker fees are unavailable; net-known-cost results are incomplete.",
         "Candle spread points require captured instrument point metadata and are not tick execution spreads.",
         "All Layer 3 and Layer 4 parameters remain UNVALIDATED; no parameter was promoted.",
+        "Walk-forward windows are a protocol only; this command does not run fold selection or OOS validation.",
     )
     assumptions = {
+        "final_holdout_evaluated": False,
+        "walk_forward_executed": False,
+        "baseline_scope": "pre-holdout research only; decisions and outcomes stop at the boundary",
         "entry": "next available H1 open",
         "ambiguity_policy": config.backtest.ambiguity_policy,
         "reward_risk": config.backtest.reward_risk,
