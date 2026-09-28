@@ -500,4 +500,3 @@ def analyse_market(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
                           "rolling_low": h1_features.values["rolling_low"]}),
         combined, macro, session_context(evaluation_time))
     return AnalysisResult(snapshot, candidate)
-
