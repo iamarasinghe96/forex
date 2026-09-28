@@ -26,6 +26,13 @@ def server_timestamp_to_utc(timestamp: float) -> datetime:
     return server_time - server_utc_offset(server_time)
 
 
+def utc_to_server_datetime(value: datetime) -> datetime:
+    """Encode a true UTC request bound on IC Markets' server-wall timeline."""
+    if value.tzinfo is None or value.utcoffset() != timedelta(0):
+        raise ValueError("MT5 request bound must be UTC-aware")
+    return value + server_utc_offset(value)
+
+
 def validate_live_server_timestamp(
     timestamp: float, now: datetime, tolerance: timedelta,
 ) -> None:

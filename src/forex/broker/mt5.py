@@ -10,6 +10,7 @@ from typing import Any
 from forex.broker.base import Broker
 from forex.broker.ic_markets_clock import (
     server_timestamp_to_utc,
+    utc_to_server_datetime,
     validate_live_server_timestamp,
 )
 from forex.config import BrokerConfig
@@ -200,10 +201,12 @@ class MT5Broker(Broker):
         if start >= end:
             raise OperatorError("Candle start must be earlier than end.")
         resolved = self.resolve_symbol(symbol)
+        server_start = utc_to_server_datetime(start)
+        server_end = utc_to_server_datetime(end)
         rows: Any = None
         for _ in range(retries):
             rows = self.api.copy_rates_range(
-                resolved.broker_name, self.timeframe_constant(timeframe), start, end
+                resolved.broker_name, self.timeframe_constant(timeframe), server_start, server_end
             )
             if rows is not None and len(rows) > 0:
                 break

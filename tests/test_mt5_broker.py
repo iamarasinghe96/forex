@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
-from forex.broker.ic_markets_clock import server_timestamp_to_utc
+from forex.broker.ic_markets_clock import server_timestamp_to_utc, utc_to_server_datetime
 from forex.broker.mt5 import MT5Broker
 from forex.config import BrokerConfig, MarketDataConfig
 from forex.domain import Timeframe
@@ -105,6 +105,19 @@ def test_ic_markets_server_time_normalizes_with_historical_dst(server_time, expe
     assert server_timestamp_to_utc(server_time.timestamp()) == expected
 
 
+@pytest.mark.parametrize(
+    ("utc_time", "server_time"),
+    [
+        (datetime(2026, 9, 28, 8, 14, tzinfo=UTC),
+         datetime(2026, 9, 28, 11, 14, tzinfo=UTC)),
+        (datetime(2026, 1, 15, 8, 14, tzinfo=UTC),
+         datetime(2026, 1, 15, 10, 14, tzinfo=UTC)),
+    ],
+)
+def test_utc_request_bound_encodes_ic_markets_server_time(utc_time, server_time):
+    assert utc_to_server_datetime(utc_time) == server_time
+
+
 def test_tick_normalizes_server_wall_time_to_utc():
     api = FakeMT5()
     api.symbol_info_tick = lambda _name: ns(
@@ -147,22 +160,56 @@ def test_live_server_clock_sanity_accepts_expected_offset_and_rejects_mismatch()
 
 
 @pytest.mark.parametrize("timeframe", [Timeframe.H1, Timeframe.H4])
-def test_candles_normalize_server_wall_time_to_utc(timeframe):
+def test_current_candle_query_converts_bounds_and_normalizes_result(timeframe):
     api = FakeMT5()
-    api.TIMEFRAME_H1 = 60
-    api.TIMEFRAME_H4 = 240
-    api.copy_rates_range = lambda *_args: [{
-        "time": int(datetime(2026, 9, 28, 11, tzinfo=UTC).timestamp()),
-        "open": 1, "high": 2, "low": 1, "close": 2,
-        "tick_volume": 1, "spread": 0, "real_volume": 0,
-    }]
+    captured = []
+
+    def copy_rates_range(_symbol, _timeframe, start, end):
+        captured.append((start, end))
+        return [{
+            "time": int(datetime(2026, 9, 28, 11, tzinfo=UTC).timestamp()),
+            "open": 1, "high": 2, "low": 1, "close": 2,
+            "tick_volume": 1, "spread": 0, "real_volume": 0,
+        }]
+
+    api.copy_rates_range = copy_rates_range
 
     candles = MT5Broker(config(), "secret", api).candles(
         "EURUSD", timeframe,
-        datetime(2026, 9, 28, 7, tzinfo=UTC), datetime(2026, 9, 28, 9, tzinfo=UTC),
+        datetime(2026, 9, 28, 7, 14, tzinfo=UTC),
+        datetime(2026, 9, 28, 8, 14, tzinfo=UTC),
     )
 
+    assert captured == [(
+        datetime(2026, 9, 28, 10, 14, tzinfo=UTC),
+        datetime(2026, 9, 28, 11, 14, tzinfo=UTC),
+    )]
     assert candles[0].timestamp_utc == datetime(2026, 9, 28, 8, tzinfo=UTC)
+    assert candles[0].timestamp_utc.utcoffset() == timedelta(0)
+
+
+def test_range_bounds_on_opposite_sides_of_dst_use_individual_offsets():
+    api = FakeMT5()
+    captured = []
+
+    def copy_rates_range(_symbol, _timeframe, start, end):
+        captured.append((start, end))
+        return [{
+            "time": int(datetime(2026, 3, 9, 11, tzinfo=UTC).timestamp()),
+            "open": 1, "high": 2, "low": 1, "close": 2,
+            "tick_volume": 1, "spread": 0, "real_volume": 0,
+        }]
+
+    api.copy_rates_range = copy_rates_range
+    MT5Broker(config(), "secret", api).candles(
+        "EURUSD", Timeframe.H1,
+        datetime(2026, 3, 7, 8, tzinfo=UTC), datetime(2026, 3, 9, 8, tzinfo=UTC),
+    )
+
+    assert captured == [(
+        datetime(2026, 3, 7, 10, tzinfo=UTC),
+        datetime(2026, 3, 9, 11, tzinfo=UTC),
+    )]
 
 
 def test_historical_candles_use_each_dates_offset():

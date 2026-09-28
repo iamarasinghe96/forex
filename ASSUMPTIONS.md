@@ -12,8 +12,10 @@ The following operator choices are **unvalidated** rather than empirical strateg
 - IC Markets MT5 timestamps are assumed to encode broker server wall time: GMT+2 outside US DST
   and GMT+3 from the second Sunday in March through the first Sunday in November. The adapter
   normalizes each tick and historical candle using the offset for that timestamp before broker-
-  neutral objects or SQLite see it. FX is closed during the Sunday transition, avoiding ambiguous
-  H1/H4 market bars; this documented schedule remains an **unvalidated** broker assumption.
+  neutral objects or SQLite see it. It also converts each UTC history-request bound independently
+  onto the server-wall timeline expected by MT5, including ranges whose bounds use different
+  offsets. FX is closed during the Sunday transition, avoiding ambiguous H1/H4 market bars; this
+  documented schedule remains an **unvalidated** broker assumption.
 - H1/H4 stale limits and the configured Friday/Sunday UTC closure hours are operational defaults.
   Weekend classification shifts those standard-time UTC boundaries one hour earlier during US DST.
   It does not fabricate bars, and unusual historical broker sessions remain unvalidated.
