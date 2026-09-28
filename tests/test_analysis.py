@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import math
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -20,6 +21,7 @@ from forex.analysis import (
     ema,
     feature_state,
     macd,
+    prepare_candles,
     realised_volatility,
     rsi,
     session_context,
@@ -53,6 +55,47 @@ def compact_config(**changes: object) -> AnalysisConfig:
     }
     values.update(changes)
     return AnalysisConfig(**values)
+
+
+@pytest.mark.parametrize("config", [AnalysisConfig(), compact_config(),
+                                    compact_config(rsi_period=30, structure_window=40)])
+def test_prepared_replay_is_exactly_equal_and_future_independent(config: AnalysisConfig) -> None:
+    h1 = candles(Timeframe.H1, [1.1 + .003 * math.sin(i / 7) + i * .00001
+                               for i in range(1300)])
+    h4 = candles(Timeframe.H4, [1.1 + .006 * math.sin(i / 13) + i * .00002
+                               for i in range(330)], start=START + timedelta(hours=2))
+    # Missing bars and nonstandard H4 boundaries must retain reference behavior.
+    del h1[100:105]
+    del h4[50:52]
+    prepared_h1, prepared_h4 = prepare_candles(h1, config), prepare_candles(h4, config)
+    for hour in (850, 899, 1101, 1200):
+        evaluation = START + timedelta(hours=hour, minutes=30)
+        expected = analyse_market("EURUSD", h1, h4, evaluation, config)
+        assert analyse_market("EURUSD", prepared_h1, prepared_h4, evaluation, config) == expected
+        changed_h1 = [replace(c, open=c.open * 2, high=c.high * 2,
+                              low=c.low * 2, close=c.close * 2)
+                      if c.timestamp_utc + c.timeframe.duration > evaluation else c for c in h1]
+        changed_h4 = [replace(c, open=c.open * 3, high=c.high * 3,
+                              low=c.low * 3, close=c.close * 3)
+                      if c.timestamp_utc + c.timeframe.duration > evaluation else c for c in h4]
+        assert analyse_market("EURUSD", prepare_candles(changed_h1, config),
+                              prepare_candles(changed_h4, config), evaluation, config) == expected
+
+
+def test_prepared_history_rejects_config_mismatch_and_preserves_deduplication() -> None:
+    config = compact_config()
+    values = candles(Timeframe.H1, [1 + i * .001 for i in range(60)])
+    prepared = prepare_candles(list(reversed(values)) + [values[0]], config)
+    assert list(prepared) == values
+    cutoff = START + timedelta(hours=30)
+    prefix = closed_candles(prepared, cutoff)
+    assert list(prefix) == values[:30]
+    with pytest.raises(IndexError):
+        _ = prefix[30]
+    with pytest.raises(ValueError, match="configuration mismatch"):
+        feature_state(prefix, compact_config(ema_fast=4))
+    with pytest.raises(InsufficientDataError):
+        feature_state(closed_candles(prepared, START), config)
 
 
 def test_closed_candles_excludes_forming_and_uses_actual_nonstandard_h4_alignment() -> None:
