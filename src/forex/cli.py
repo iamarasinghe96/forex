@@ -53,17 +53,19 @@ def verify_market_data(config_path: Path) -> int:
         store = CandleStore(config.database.path)
         broker = MT5Broker(config.broker, secrets.mt5_password)
         broker.connect()
-        now = datetime.now(UTC)
         for symbol in config.broker.symbols:
             spec = broker.resolve_symbol(symbol)
             tick = broker.tick(spec.broker_name)
-            validate_tick_freshness(tick, now, config.market_data)
+            validate_tick_freshness(tick, datetime.now(UTC), config.market_data)
             for timeframe in Timeframe:
-                recent = broker.candles(symbol, timeframe, now - timedelta(days=7), now)
-                validate_candle_freshness(recent[-1], now, config.market_data)
+                request_end = datetime.now(UTC)
+                recent = broker.candles(
+                    symbol, timeframe, request_end - timedelta(days=7), request_end
+                )
+                validate_candle_freshness(recent[-1], datetime.now(UTC), config.market_data)
                 store.upsert(recent)
                 report = download_history(
-                    broker, store, symbol, timeframe, config.market_data, end=now
+                    broker, store, symbol, timeframe, config.market_data, end=datetime.now(UTC)
                 )
                 log.info(
                     "%s %s earliest=%s latest=%s candle_count=%s depth_days=%.1f "
