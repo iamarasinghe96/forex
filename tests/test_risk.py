@@ -8,16 +8,37 @@ from types import MappingProxyType
 
 import pytest
 
-from forex.analysis import (Availability, RegimeLabel, RegimeState, RelativeMacroContext,
-                            SetupType, Side, TradeCandidate, TradeStyle)
+from forex.analysis import (
+    Availability,
+    RegimeLabel,
+    RegimeState,
+    RelativeMacroContext,
+    SetupType,
+    Side,
+    TradeCandidate,
+    TradeStyle,
+)
 from forex.config import RiskConfig, load_config
 from forex.domain import AccountMode, AccountState, SymbolSpec
 from forex.persistence import RiskSessionStore
-from forex.risk import (ContextualConviction, DailyRiskState, DecisionStatus, OpenRiskPosition,
-                        PortfolioRiskState, RISK_POLICY_IMPLEMENTATION_VERSION, RiskBlockReason, RiskPolicy,
-                        derive_conviction, decide_risk,
-                        enforce_layer6_ceiling, evaluate_daily_risk, exposure_diagnostics,
-                        protective_stop, risk_tier, size_position)
+from forex.risk import (
+    RISK_POLICY_IMPLEMENTATION_VERSION,
+    ContextualConviction,
+    DailyRiskState,
+    DecisionStatus,
+    OpenRiskPosition,
+    PortfolioRiskState,
+    RiskBlockReason,
+    RiskPolicy,
+    decide_risk,
+    derive_conviction,
+    enforce_layer6_ceiling,
+    evaluate_daily_risk,
+    exposure_diagnostics,
+    protective_stop,
+    risk_tier,
+    size_position,
+)
 from forex.risk_policy import policy_from_config
 
 D = Decimal
