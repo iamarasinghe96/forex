@@ -32,3 +32,35 @@ The following operator choices are **unvalidated** rather than empirical strateg
 
 Strategy indicators, weights, thresholds, ATR multipliers, and fusion parameters will be added
 only after Layer 4 measurement. The fabricated prototype scenario library is deliberately omitted.
+
+## Layer 3 UNVALIDATED research assumptions
+
+All analysis settings in `config.yaml` are centralized, versioned **UNVALIDATED** research starting
+points, not optimized parameters or evidence of profitability: EMA 20/50/200, RSI 14, MACD 12/26/9,
+ATR 14, structural window 20, volatility-rank window 100, slope lookback 5, return horizons 1/5/20,
+trend/range/setup thresholds, mean-deviation extreme and DAY/SWING persistence threshold. Layer 4 must
+measure sensitivity and validate replacements; changing behavior requires a new parameter and/or
+strategy version.
+
+Feature definitions are: recursively seeded EMA; simple-window RSI gains/losses; EMA MACD and signal;
+true-range mean ATR; population standard deviation of log returns; empirical ATR percentile; absolute
+net movement divided by path length for directional efficiency; prior-window high/low and normalized
+breakout distances; close location within that range; rolling-mean population z-score; and last-bar
+body/wick/range ratios. Spread remains raw broker points. Tick volume is explicitly broker tick volume,
+not centralized FX volume.
+
+The provisional multidimensional regime retains continuous directional bias, trend/range strength,
+volatility rank, momentum and structural breakout state even when it derives a descriptive label.
+Candidate selection uses graded support and opposition, not indicator unanimity. Mild contrary evidence
+is recorded rather than automatically vetoing. No frequency or expectancy claim is made.
+
+London and New York sessions use IANA timezone/DST conversion (`Europe/London` and
+`America/New_York`); Asia uses `Asia/Tokyo`. Session is metadata only. Relative macro data defaults to
+explicitly unavailable, never neutral/zero/bullish/bearish, and missing macro neither penalizes nor
+vetoes technical analysis. No synthetic macro/news data exists.
+
+Layer 3 creates stable hooks for future automatic, multi-label, confidence-scored outcome attribution
+and counterfactual analysis of both executed and rejected opportunities. Normal operation is designed
+not to require manual loss labels. It cannot react to a few losses by blocking trades and cannot
+self-modify live parameters; validated, versioned promotion is mandatory. Layer 3 itself implements no
+backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper runtime, or learner.

@@ -31,6 +31,28 @@ market_data:
   history_retry_count: 3
   server_clock_tolerance_seconds: 300  # UNVALIDATED operational clock sanity tolerance.
 
+# Layer 3 research starting points. Every value is UNVALIDATED and versioned for Layer 4 testing.
+analysis:
+  strategy_version: layer3-v1
+  parameter_version: unvalidated-v1
+  ema_fast: 20
+  ema_slow: 50
+  ema_context: 200
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  atr_period: 14
+  structure_window: 20
+  volatility_window: 100
+  slope_lookback: 5
+  return_horizons: [1, 5, 20]
+  trend_threshold: 0.55
+  range_threshold: 0.58
+  setup_score_threshold: 0.45
+  extreme_zscore: 1.0
+  swing_trend_threshold: 0.68
+
 telegram:
   enabled: false
   timeout_seconds: 10
