@@ -64,6 +64,17 @@ def test_weekend_and_midweek_gaps_are_distinguished():
     assert report.unexplained_missing_bars == 3
 
 
+def test_summer_weekend_gap_uses_dst_shifted_utc_boundary():
+    config = MarketDataConfig()
+    friday_close = candle(datetime(2026, 9, 25, 20, tzinfo=UTC))
+    sunday_open = candle(datetime(2026, 9, 27, 21, tzinfo=UTC))
+
+    report = detect_gaps([friday_close, sunday_open], config)
+
+    assert report.expected_weekend_gaps == 1
+    assert report.unexplained_gaps == ()
+
+
 def test_tick_freshness_ignores_weekend():
     config = MarketDataConfig()
     friday = datetime(2025, 1, 3, 21, tzinfo=UTC)
@@ -126,6 +137,9 @@ def test_market_data_verification_captures_time_after_tick(monkeypatch, tmp_path
         def tick(self, symbol):
             assert Clock.calls == 0
             return Tick(symbol, Decimal(1), Decimal(2), tick_time)
+
+        def validate_server_clock(self, _now, _tolerance_seconds):
+            pass
 
         def candles(self, symbol, timeframe, _start, end):
             return [candle(end, timeframe)]
@@ -196,7 +210,8 @@ def broker(api):
 
 
 def row(hour, close=1.5):
-    return {"time": int(datetime(2025, 1, 1, hour, tzinfo=UTC).timestamp()), "open": 1.0,
+    # January server time is UTC+2; the adapter normalizes this back to the requested UTC hour.
+    return {"time": int(datetime(2025, 1, 1, hour + 2, tzinfo=UTC).timestamp()), "open": 1.0,
             "high": 2.0, "low": 0.5, "close": close, "tick_volume": 1, "spread": 2,
             "real_volume": 0}
 

@@ -1,11 +1,15 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
+from forex.broker.ic_markets_clock import server_timestamp_to_utc
 from forex.broker.mt5 import MT5Broker
-from forex.config import BrokerConfig
+from forex.config import BrokerConfig, MarketDataConfig
+from forex.domain import Timeframe
 from forex.errors import OperatorError
+from forex.market_data import validate_tick_freshness
 
 
 def ns(**values):
@@ -14,6 +18,8 @@ def ns(**values):
 
 class FakeMT5:
     ACCOUNT_MARGIN_MODE_RETAIL_HEDGING = 2
+    TIMEFRAME_H1 = 60
+    TIMEFRAME_H4 = 240
 
     def __init__(self):
         self.selected = []
@@ -86,3 +92,100 @@ def test_account_above_leverage_cap_fails_loudly():
     api.account_info = lambda: ns(login=1, currency="AUD", balance=1, equity=1, leverage=100, margin_mode=2)
     with pytest.raises(OperatorError, match="above the configured ASIC cap"):
         MT5Broker(config(), "secret", api).connect()
+
+
+@pytest.mark.parametrize(
+    ("server_time", "expected"),
+    [
+        (datetime(2026, 9, 28, 11, tzinfo=UTC), datetime(2026, 9, 28, 8, tzinfo=UTC)),
+        (datetime(2026, 1, 15, 11, tzinfo=UTC), datetime(2026, 1, 15, 9, tzinfo=UTC)),
+    ],
+)
+def test_ic_markets_server_time_normalizes_with_historical_dst(server_time, expected):
+    assert server_timestamp_to_utc(server_time.timestamp()) == expected
+
+
+def test_tick_normalizes_server_wall_time_to_utc():
+    api = FakeMT5()
+    api.symbol_info_tick = lambda _name: ns(
+        bid=1.5, ask=1.6,
+        time_msc=datetime(2026, 9, 28, 11, tzinfo=UTC).timestamp() * 1000,
+    )
+
+    tick = MT5Broker(config(), "secret", api).tick("EURUSD.a")
+
+    assert tick.time_utc == datetime(2026, 9, 28, 8, tzinfo=UTC)
+
+
+def test_normalized_genuinely_future_tick_still_fails_freshness():
+    api = FakeMT5()
+    api.symbol_info_tick = lambda _name: ns(
+        bid=1.5, ask=1.6,
+        time_msc=datetime(2026, 9, 28, 11, 0, 1, tzinfo=UTC).timestamp() * 1000,
+    )
+    tick = MT5Broker(config(), "secret", api).tick("EURUSD.a")
+
+    with pytest.raises(OperatorError, match="future"):
+        validate_tick_freshness(
+            tick, datetime(2026, 9, 28, 8, tzinfo=UTC),
+            MarketDataConfig(),
+        )
+
+
+def test_live_server_clock_sanity_accepts_expected_offset_and_rejects_mismatch():
+    api = FakeMT5()
+    api.symbol_info_tick = lambda _name: ns(
+        bid=1.5, ask=1.6,
+        time_msc=datetime(2026, 9, 28, 11, tzinfo=UTC).timestamp() * 1000,
+    )
+    broker = MT5Broker(config(), "secret", api)
+    broker.tick("EURUSD.a")
+
+    broker.validate_server_clock(datetime(2026, 9, 28, 8, tzinfo=UTC), 300)
+    with pytest.raises(OperatorError, match=r"GMT\+2/GMT\+3"):
+        broker.validate_server_clock(datetime(2026, 9, 28, 7, tzinfo=UTC), 300)
+
+
+@pytest.mark.parametrize("timeframe", [Timeframe.H1, Timeframe.H4])
+def test_candles_normalize_server_wall_time_to_utc(timeframe):
+    api = FakeMT5()
+    api.TIMEFRAME_H1 = 60
+    api.TIMEFRAME_H4 = 240
+    api.copy_rates_range = lambda *_args: [{
+        "time": int(datetime(2026, 9, 28, 11, tzinfo=UTC).timestamp()),
+        "open": 1, "high": 2, "low": 1, "close": 2,
+        "tick_volume": 1, "spread": 0, "real_volume": 0,
+    }]
+
+    candles = MT5Broker(config(), "secret", api).candles(
+        "EURUSD", timeframe,
+        datetime(2026, 9, 28, 7, tzinfo=UTC), datetime(2026, 9, 28, 9, tzinfo=UTC),
+    )
+
+    assert candles[0].timestamp_utc == datetime(2026, 9, 28, 8, tzinfo=UTC)
+
+
+def test_historical_candles_use_each_dates_offset():
+    api = FakeMT5()
+    api.TIMEFRAME_H1 = 60
+    api.copy_rates_range = lambda *_args: [
+        {
+            "time": int(server_time.timestamp()),
+            "open": 1, "high": 2, "low": 1, "close": 2,
+            "tick_volume": 1, "spread": 0, "real_volume": 0,
+        }
+        for server_time in (
+            datetime(2026, 1, 15, 11, tzinfo=UTC),
+            datetime(2026, 9, 28, 11, tzinfo=UTC),
+        )
+    ]
+
+    candles = MT5Broker(config(), "secret", api).candles(
+        "EURUSD", Timeframe.H1,
+        datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 10, 1, tzinfo=UTC),
+    )
+
+    assert [candle.timestamp_utc for candle in candles] == [
+        datetime(2026, 1, 15, 9, tzinfo=UTC),
+        datetime(2026, 9, 28, 8, tzinfo=UTC),
+    ]

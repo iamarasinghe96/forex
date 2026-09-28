@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import ModuleType
 from typing import Any
 
 from forex.broker.base import Broker
+from forex.broker.ic_markets_clock import (
+    server_timestamp_to_utc,
+    validate_live_server_timestamp,
+)
 from forex.config import BrokerConfig
 from forex.domain import AccountMode, AccountState, Candle, SymbolSpec, Tick, Timeframe
 from forex.errors import OperatorError
@@ -33,6 +37,7 @@ class MT5Broker(Broker):
         self.api = api
         self.config = config
         self.password = password
+        self._last_tick_timestamp: float | None = None
 
     def connect(self) -> AccountState:
         args: dict[str, object] = {
@@ -122,8 +127,19 @@ class MT5Broker(Broker):
                 f"No live tick is available for {broker_symbol}. Confirm Market Watch shows live prices "
                 "and the market is open, then retry."
             )
-        timestamp = datetime.fromtimestamp(float(raw.time_msc) / 1000, tz=UTC)
+        self._last_tick_timestamp = float(raw.time_msc) / 1000
+        timestamp = server_timestamp_to_utc(self._last_tick_timestamp)
         return Tick(broker_symbol, _decimal(raw.bid), _decimal(raw.ask), timestamp)
+
+    def validate_server_clock(self, now: datetime, tolerance_seconds: int) -> None:
+        """Validate the most recently retrieved live tick against the system UTC clock."""
+        if self._last_tick_timestamp is None:
+            raise OperatorError("Retrieve an MT5 tick before validating the broker server clock.")
+        validate_live_server_timestamp(
+            self._last_tick_timestamp,
+            now,
+            timedelta(seconds=tolerance_seconds),
+        )
 
     def pip_value_per_lot(self, spec: SymbolSpec, account_currency: str) -> Decimal:
         """Compute one-lot pip value from contract properties and a live conversion quote."""
@@ -203,7 +219,7 @@ class MT5Broker(Broker):
         by_time: dict[datetime, Candle] = {}
         try:
             for row in rows:
-                timestamp = datetime.fromtimestamp(float(row["time"]), tz=UTC)
+                timestamp = server_timestamp_to_utc(float(row["time"]))
                 candle = Candle.from_values(
                     symbol.upper(), timeframe, timestamp, row["open"], row["high"], row["low"],
                     row["close"], row["tick_volume"], row["spread"], row["real_volume"],

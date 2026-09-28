@@ -29,6 +29,7 @@ market_data:
   weekend_open_hour_utc: 22
   history_chunk_days: 90
   history_retry_count: 3
+  server_clock_tolerance_seconds: 300  # UNVALIDATED operational clock sanity tolerance.
 
 telegram:
   enabled: false

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 
+from forex.broker.ic_markets_clock import in_weekend
 from forex.broker.mt5 import MT5Broker
 from forex.config import MarketDataConfig
 from forex.domain import Candle, Tick, Timeframe
@@ -44,12 +45,13 @@ class HistoryReport:
 
 
 def _in_weekend(value: datetime, config: MarketDataConfig) -> bool:
-    minute = value.weekday() * 1440 + value.hour * 60 + value.minute
-    close = config.weekend_close_weekday * 1440 + config.weekend_close_hour_utc * 60
-    opening = config.weekend_open_weekday * 1440 + config.weekend_open_hour_utc * 60
-    if close <= opening:
-        return close <= minute < opening
-    return minute >= close or minute < opening
+    return in_weekend(
+        value,
+        config.weekend_close_weekday,
+        config.weekend_close_hour_utc,
+        config.weekend_open_weekday,
+        config.weekend_open_hour_utc,
+    )
 
 
 def detect_gaps(candles: list[Candle], config: MarketDataConfig) -> GapReport:

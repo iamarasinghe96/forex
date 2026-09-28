@@ -56,7 +56,11 @@ def verify_market_data(config_path: Path) -> int:
         for symbol in config.broker.symbols:
             spec = broker.resolve_symbol(symbol)
             tick = broker.tick(spec.broker_name)
-            validate_tick_freshness(tick, datetime.now(UTC), config.market_data)
+            validation_now = datetime.now(UTC)
+            broker.validate_server_clock(
+                validation_now, config.market_data.server_clock_tolerance_seconds
+            )
+            validate_tick_freshness(tick, validation_now, config.market_data)
             for timeframe in Timeframe:
                 request_end = datetime.now(UTC)
                 recent = broker.candles(

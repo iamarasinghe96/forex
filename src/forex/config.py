@@ -55,6 +55,7 @@ class MarketDataConfig(BaseModel):
     weekend_open_hour_utc: int = Field(default=22, ge=0, le=23)
     history_chunk_days: int = Field(default=90, ge=7, le=366)
     history_retry_count: int = Field(default=3, ge=1, le=10)
+    server_clock_tolerance_seconds: int = Field(default=300, gt=0, le=3600)
 
 
 class TelegramConfig(BaseModel):
