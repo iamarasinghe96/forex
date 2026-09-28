@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import random
+from bisect import bisect_left
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
@@ -388,8 +389,21 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
 def simulate_candidates(evaluations: Sequence[BacktestEvaluation], h1: Sequence[Candle],
                         config: BacktestConfig, cost_model: CostModel | None = None,
                         outcome_end_utc: datetime | None = None) -> tuple[SimulationAttempt, ...]:
-    return tuple(simulate_trade_attempt(item.candidate, h1, config, cost_model, outcome_end_utc)
-                 for item in evaluations if item.candidate is not None)
+    ordered = sorted(h1, key=lambda candle: candle.timestamp_utc)
+    timestamps = [candle.timestamp_utc for candle in ordered]
+    attempts = []
+    for item in evaluations:
+        if item.candidate is None:
+            continue
+        start = bisect_left(timestamps, item.candidate.evaluation_time_utc)
+        # The simulator can consume at most the configured horizon. Keep the first
+        # future bar even across the outcome boundary so censoring remains distinct
+        # from NO_NEXT_BAR. No future bars or fills are invented.
+        future = ordered[start:start + config.simulation_horizon_bars]
+        attempts.append(simulate_trade_attempt(
+            item.candidate, future, config, cost_model, outcome_end_utc,
+        ))
+    return tuple(attempts)
 
 
 def _streak(values: Sequence[float], predicate: Callable[[float], bool]) -> int:
