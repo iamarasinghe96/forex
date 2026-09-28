@@ -159,3 +159,20 @@ separate, although both require new-entry halt plus flatten intent. The circuit 
 cleared by equity recovery within the same session.
 The first opening balance stored for a session ID is authoritative and cannot be replaced by a
 later write; start a new explicit session ID to establish another opening balance.
+
+## Dedicated research-history import
+
+Obtain genuine H1 CSV files from a provider whose identity, licence, timezone and price semantics you
+independently verified; this project intentionally nominates no unverified vendor. Repeat import for
+EURUSD, GBPUSD and USDJPY with one release/provider/database and an explicit alignment policy:
+
+```powershell
+.\.venv\Scripts\forex.exe import-history --research-database data\research.sqlite3 --file C:\verified-data\EURUSD.csv --dataset RELEASE_ID --provider PROVIDER --symbol EURUSD --price-type midpoint --volume-semantics unavailable --h4-alignment-hour-utc 0
+.\.venv\Scripts\forex.exe verify-history --research-database data\research.sqlite3 --config config.yaml
+.\.venv\Scripts\forex.exe validate-backtest --research-database data\research.sqlite3 --config config.yaml
+```
+
+Use `--spread-available` only with documented spread semantics. Review coverage, counts, expected
+closures and unexplained gaps. Keep the IC Markets database unchanged. A conflict requires a separate
+database, never an overwrite. Exit code 3 remains the insufficient-history result; eligibility is not
+strategy approval.

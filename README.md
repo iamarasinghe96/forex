@@ -165,3 +165,26 @@ and unavailable historical account-currency metadata is not fabricated. Formal s
 `INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION` until five real years exist. Run
 `forex verify-risk` for a read-only current calculation; its portfolio check deliberately uses a
 zero-position verification fixture because Layer 7 reconciliation does not exist.
+
+## External historical research data
+
+No external vendor is selected by this repository: provider claims could not be verified in this
+environment. Instead, `import-history` accepts deliberately obtained H1 CSV with
+`timestamp,open,high,low,close` and optional `volume,spread`. Timestamps must be explicitly UTC and
+rows strictly increasing. Invalid OHLC, duplicates, naive timestamps, and conflicting overlaps fail;
+gaps are never filled.
+
+Always use a dedicated `--research-database`, never the configured IC Markets database. Provenance
+records provider/release, pair, granularity, UTC, price type, spread/volume availability, coverage,
+row count, import time, transformations, input hash and H4 policy. H4 uses only four complete H1 bars
+under an explicit fixed UTC alignment hour; it is not claimed equivalent to IC Markets broker-native
+DST-dependent H4. Missing spread is provenance-marked unavailable, not a zero-cost assumption.
+
+```powershell
+.\.venv\Scripts\forex.exe import-history --research-database data\research.sqlite3 --file data\EURUSD.csv --dataset RELEASE_ID --provider PROVIDER --symbol EURUSD --price-type midpoint --volume-semantics unavailable --h4-alignment-hour-utc 0
+.\.venv\Scripts\forex.exe verify-history --research-database data\research.sqlite3
+.\.venv\Scripts\forex.exe validate-backtest --research-database data\research.sqlite3
+```
+
+Import all configured symbols only after independently verifying provider and licence. Five years only
+makes formal validation eligible; it does not validate the strategy or relax any existing protocol.

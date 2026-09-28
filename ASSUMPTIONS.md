@@ -131,3 +131,13 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
   Non-eligible and blocked decisions expose no permitted plan. Layer 4 reports normalized R;
   the short history cannot validate five years or honestly reconstruct missing historical
   conversion metadata. The 3–8/week target applies only to future executed trades.
+
+## External research-history assumptions
+
+- Imports are isolated in an operator-selected SQLite database and retain provider/release, file hash,
+  price/volume/spread semantics, UTC, coverage, count, import time and transformation provenance. No
+  provider is endorsed until independently verified.
+- Input is strict UTC H1. Research H4 uses complete four-hour groups under an explicit fixed UTC
+  alignment hour (0–3); incomplete groups remain gaps. It is not IC Markets broker-native H4.
+- Unavailable spread/volume maps to the legacy candle model's zero while provenance marks it
+  unavailable. This is not a zero transaction-cost or genuine-volume claim.
