@@ -112,10 +112,16 @@ and reporting work. Do not interpret this shorter engine verification as strateg
 ## Outputs and interpretation
 
 `reports/backtest/strategy-baseline.json` contains coverage gates, strategy/parameter versions,
-evaluation/candidate/trade counts, gross and known-cost metrics, breakdowns, rejection counts, Monte
+raw candidate, setup-episode, and completed independent-simulation counts, gross and known-cost
+metrics, breakdowns, rejection counts, Monte
 Carlo summaries, assumptions, and warnings. Console output is the concise operator view. Re-running
 with unchanged database/config produces identical analytical values; the report's timestamp is derived
 from stored evaluation time, not wall-clock time.
+
+Interpret raw candidate evaluations, setup episodes, and completed independent candidate simulations
+as distinct research counts; none predicts the final live-order count. Review `simulation_status_counts`
+for `NO_NEXT_BAR`, `NON_POSITIVE_INITIAL_RISK`, and `WINDOW_BOUNDARY_CENSORED` attribution. Fold-boundary
+censoring is excluded from expectancy and prevents train/test/holdout prices crossing research windows.
 
 When history is missing, run `verify-market-data` with MT5 connected, increase **Max bars in chart** if
 appropriate, load the required H1/H4 charts, and rerun. Never pad, duplicate, interpolate, scrape, or

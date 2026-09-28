@@ -42,6 +42,13 @@ class AmbiguityPolicy(str, Enum):
     AMBIGUOUS = "ambiguous"
 
 
+class SimulationStatus(str, Enum):
+    COMPLETED = "COMPLETED"
+    NO_NEXT_BAR = "NO_NEXT_BAR"
+    NON_POSITIVE_INITIAL_RISK = "NON_POSITIVE_INITIAL_RISK"
+    WINDOW_BOUNDARY_CENSORED = "WINDOW_BOUNDARY_CENSORED"
+
+
 @dataclass(frozen=True)
 class ResearchInstrumentMetadata:
     """Captured metadata; callers must obtain it from a verified broker specification."""
@@ -109,6 +116,14 @@ class BacktestEvaluation:
 
 
 @dataclass(frozen=True)
+class SimulationAttempt:
+    candidate_id: str
+    evaluation_id: str
+    status: SimulationStatus
+    trade: SimulatedTrade | None
+
+
+@dataclass(frozen=True)
 class SimulatedTrade:
     candidate_id: str
     evaluation_id: str
@@ -166,10 +181,14 @@ class MetricSlice:
 @dataclass(frozen=True)
 class BacktestMetrics:
     evaluation_count: int
-    candidate_count: int
-    trade_count: int
+    raw_candidate_evaluation_count: int
+    completed_independent_simulation_count: int
     weeks: float
     candidate_frequency_per_week: float
+    setup_episode_count: int
+    setup_episodes_per_week: float
+    average_candidate_evaluations_per_episode: float | None
+    median_candidate_evaluations_per_episode: float | None
     trades_per_week: float
     gross: MetricSlice
     net_known_cost: MetricSlice
@@ -181,19 +200,34 @@ class BacktestMetrics:
     by_trade_style: Mapping[str, MetricSlice]
     by_volatility_bucket: Mapping[str, MetricSlice]
     rejection_reasons: Mapping[str, int]
+    simulation_status_counts: Mapping[str, int]
     strategy_version: str
     parameter_version: str
+
+    @property
+    def candidate_count(self) -> int:
+        """Compatibility alias; this is a raw candidate-evaluation count."""
+        return self.raw_candidate_evaluation_count
+
+    @property
+    def trade_count(self) -> int:
+        """Compatibility alias; this is not a future live-order count."""
+        return self.completed_independent_simulation_count
 
 
 @dataclass(frozen=True)
 class ReplayResult:
     evaluations: tuple[BacktestEvaluation, ...]
+    simulation_attempts: tuple[SimulationAttempt, ...]
     trades: tuple[SimulatedTrade, ...]
     metrics: BacktestMetrics
 
 
-def _forward_path(candles: Sequence[Candle], index: int, horizon: int) -> ForwardPath:
-    future = candles[index + 1:index + 1 + horizon]
+def _forward_path(candles: Sequence[Candle], index: int, horizon: int,
+                  outcome_end_utc: datetime | None = None) -> ForwardPath:
+    future = [candle for candle in candles[index + 1:index + 1 + horizon]
+              if outcome_end_utc is None
+              or candle.timestamp_utc + candle.timeframe.duration <= outcome_end_utc]
     reference = float(candles[index].close)
     if not future:
         return ForwardPath(horizon, 0, reference, None, None, None, None, None)
@@ -208,20 +242,27 @@ def _forward_path(candles: Sequence[Candle], index: int, horizon: int) -> Forwar
 
 
 def replay_evaluations(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
-                       analysis: AnalysisConfig, research: BacktestConfig) -> tuple[BacktestEvaluation, ...]:
+                       analysis: AnalysisConfig, research: BacktestConfig,
+                       evaluation_start_utc: datetime | None = None,
+                       evaluation_end_utc: datetime | None = None,
+                       outcome_end_utc: datetime | None = None) -> tuple[BacktestEvaluation, ...]:
     """Evaluate after each actual H1 close; future bars are used only for labelled outcomes."""
     ordered_h1 = sorted(h1, key=lambda c: c.timestamp_utc)
     ordered_h4 = sorted(h4, key=lambda c: c.timestamp_utc)
     results: list[BacktestEvaluation] = []
     for index, candle in enumerate(ordered_h1):
         evaluation_time = candle.timestamp_utc + Timeframe.H1.duration
+        if evaluation_start_utc is not None and evaluation_time < evaluation_start_utc:
+            continue
+        if evaluation_end_utc is not None and evaluation_time >= evaluation_end_utc:
+            continue
         try:
             # analyse_market performs its own close-time filtering. Passing immutable history makes
             # this the exact same strategy entry point used by non-research callers.
             analysed = analyse_market(symbol, ordered_h1, ordered_h4, evaluation_time, analysis)
         except InsufficientDataError:
             continue
-        paths = tuple(_forward_path(ordered_h1, index, horizon)
+        paths = tuple(_forward_path(ordered_h1, index, horizon, outcome_end_utc)
                       for horizon in research.forward_horizons_bars)
         results.append(BacktestEvaluation(analysed.snapshot, analysed.candidate, paths))
     return tuple(results)
@@ -233,13 +274,18 @@ def _hit_values(side: Side, candle: Candle, stop: float, target: float) -> tuple
     return float(candle.high) >= stop, float(candle.low) <= target
 
 
-def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], config: BacktestConfig,
-                   cost_model: CostModel | None = None) -> SimulatedTrade | None:
-    """Fill at the next available H1 open, never on the signal candle."""
-    bars = [c for c in sorted(future_h1, key=lambda c: c.timestamp_utc)
-            if c.timestamp_utc >= candidate.evaluation_time_utc]
+def simulate_trade_attempt(candidate: TradeCandidate, future_h1: Sequence[Candle],
+                           config: BacktestConfig, cost_model: CostModel | None = None,
+                           outcome_end_utc: datetime | None = None) -> SimulationAttempt:
+    """Simulate within an explicit outcome boundary; unresolved outcomes are censored."""
+    all_future = [c for c in sorted(future_h1, key=lambda c: c.timestamp_utc)
+                  if c.timestamp_utc >= candidate.evaluation_time_utc]
+    bars = [c for c in all_future if outcome_end_utc is None
+            or c.timestamp_utc + c.timeframe.duration <= outcome_end_utc]
     if not bars:
-        return None
+        status = (SimulationStatus.WINDOW_BOUNDARY_CENSORED if all_future
+                  else SimulationStatus.NO_NEXT_BAR)
+        return SimulationAttempt(candidate.candidate_id, candidate.evaluation_id, status, None)
     entry_bar = bars[0]
     entry = float(entry_bar.open)
     reference = candidate.structural_reference_levels
@@ -247,13 +293,14 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
                  else reference["rolling_high"])
     risk = entry - stop if candidate.side is Side.LONG else stop - entry
     if risk <= 0:
-        return None
+        return SimulationAttempt(candidate.candidate_id, candidate.evaluation_id,
+                                 SimulationStatus.NON_POSITIVE_INITIAL_RISK, None)
     target = entry + risk * config.reward_risk * (1 if candidate.side is Side.LONG else -1)
     active_stop = stop
-    exit_price = float(bars[min(len(bars), config.simulation_horizon_bars) - 1].close)
-    exit_reason = "TIME"
+    exit_price: float | None = None
+    exit_reason: str | None = None
     ambiguous = False
-    exit_index = min(len(bars), config.simulation_horizon_bars) - 1
+    exit_index = 0
     mfe = mae = 0.0
     mfe_index = mae_index = 0
     policy = AmbiguityPolicy(config.ambiguity_policy)
@@ -290,6 +337,14 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
                         if candidate.side is Side.LONG
                         else float(bar.close) + config.atr_trailing_multiple * atr_value)
             active_stop = max(active_stop, proposed) if candidate.side is Side.LONG else min(active_stop, proposed)
+    if exit_price is None:
+        if len(bars) < config.simulation_horizon_bars:
+            return SimulationAttempt(candidate.candidate_id, candidate.evaluation_id,
+                                     SimulationStatus.WINDOW_BOUNDARY_CENSORED, None)
+        exit_index = config.simulation_horizon_bars - 1
+        exit_price = float(bars[exit_index].close)
+        exit_reason = "TIME"
+    assert exit_reason is not None
     signed = (exit_price - entry) * (1 if candidate.side is Side.LONG else -1)
     gross_r = signed / risk
     price_cost = 0.0
@@ -299,7 +354,7 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
     if cost_model is not None:
         price_cost, statuses = cost_model.round_trip_price_cost(entry_bar)
     known_cost_r = price_cost / risk
-    return SimulatedTrade(
+    trade = SimulatedTrade(
         candidate.candidate_id, candidate.evaluation_id, candidate.symbol, candidate.side,
         candidate.setup_type.value, candidate.trade_style.value, candidate.h4_regime.label.value,
         ("LOW" if candidate.volatility_context < 1 / 3 else
@@ -310,12 +365,23 @@ def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], confi
         exit_reason, ambiguous, gross_r, known_cost_r, gross_r - known_cost_r, statuses,
         mfe, mae, mfe_index + 1, mae_index + 1, exit_index + 1,
     )
+    return SimulationAttempt(candidate.candidate_id, candidate.evaluation_id,
+                             SimulationStatus.COMPLETED, trade)
+
+
+def simulate_trade(candidate: TradeCandidate, future_h1: Sequence[Candle], config: BacktestConfig,
+                   cost_model: CostModel | None = None,
+                   outcome_end_utc: datetime | None = None) -> SimulatedTrade | None:
+    """Compatibility helper returning only a completed independent candidate simulation."""
+    return simulate_trade_attempt(candidate, future_h1, config, cost_model,
+                                  outcome_end_utc).trade
 
 
 def simulate_candidates(evaluations: Sequence[BacktestEvaluation], h1: Sequence[Candle],
-                        config: BacktestConfig, cost_model: CostModel | None = None) -> tuple[SimulatedTrade, ...]:
-    return tuple(trade for item in evaluations if item.candidate is not None
-                 if (trade := simulate_trade(item.candidate, h1, config, cost_model)) is not None)
+                        config: BacktestConfig, cost_model: CostModel | None = None,
+                        outcome_end_utc: datetime | None = None) -> tuple[SimulationAttempt, ...]:
+    return tuple(simulate_trade_attempt(item.candidate, h1, config, cost_model, outcome_end_utc)
+                 for item in evaluations if item.candidate is not None)
 
 
 def _streak(values: Sequence[float], predicate: Callable[[float], bool]) -> int:
@@ -358,7 +424,29 @@ def _breakdown(trades: Sequence[SimulatedTrade], key: Callable[[SimulatedTrade],
     return {name: _metric_slice(group, net=True) for name, group in sorted(groups.items())}
 
 
-def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequence[SimulatedTrade]) -> BacktestMetrics:
+def _episode_lengths(evaluations: Sequence[BacktestEvaluation]) -> list[int]:
+    """Lengths of contiguous symbol/side/setup candidate runs; analytical metadata only."""
+    lengths: list[int] = []
+    active_key: tuple[str, Side, object] | None = None
+    active_length = 0
+    for evaluation in evaluations:
+        candidate = evaluation.candidate
+        key = ((candidate.symbol, candidate.side, candidate.setup_type)
+               if candidate is not None else None)
+        if key is not None and key == active_key:
+            active_length += 1
+            continue
+        if active_length:
+            lengths.append(active_length)
+        active_key = key
+        active_length = 1 if key is not None else 0
+    if active_length:
+        lengths.append(active_length)
+    return lengths
+
+
+def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequence[SimulatedTrade],
+                      simulation_attempts: Sequence[SimulationAttempt] = ()) -> BacktestMetrics:
     snapshots = [item.snapshot for item in evaluations]
     if snapshots:
         elapsed = max((snapshots[-1].evaluation_time_utc - snapshots[0].evaluation_time_utc).total_seconds(), 0)
@@ -367,25 +455,36 @@ def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequenc
     else:
         weeks, strategy, parameter = 0.0, "UNKNOWN", "UNKNOWN"
     candidates = sum(item.candidate is not None for item in evaluations)
+    episode_lengths = _episode_lengths(evaluations)
     rejections = Counter(item.snapshot.no_candidate_reason or "UNSPECIFIED"
                          for item in evaluations if item.candidate is None)
     return BacktestMetrics(
         len(evaluations), candidates, len(trades), weeks, candidates / weeks if weeks else 0,
+        len(episode_lengths), len(episode_lengths) / weeks if weeks else 0,
+        fmean(episode_lengths) if episode_lengths else None,
+        median(episode_lengths) if episode_lengths else None,
         len(trades) / weeks if weeks else 0, _metric_slice(trades, net=False),
         _metric_slice(trades, net=True), _breakdown(trades, lambda t: t.side.value),
         _breakdown(trades, lambda t: t.symbol), _breakdown(trades, lambda t: t.setup_family),
         _breakdown(trades, lambda t: t.regime), _breakdown(trades, lambda t: t.sessions),
         _breakdown(trades, lambda t: t.trade_style),
         _breakdown(trades, lambda t: t.volatility_bucket), dict(sorted(rejections.items())),
+        dict(sorted(Counter(attempt.status.value for attempt in simulation_attempts).items())),
         strategy, parameter,
     )
 
 
 def run_backtest(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle], analysis: AnalysisConfig,
-                 research: BacktestConfig, cost_model: CostModel | None = None) -> ReplayResult:
-    evaluations = replay_evaluations(symbol, h1, h4, analysis, research)
-    trades = simulate_candidates(evaluations, h1, research, cost_model)
-    return ReplayResult(evaluations, trades, calculate_metrics(evaluations, trades))
+                 research: BacktestConfig, cost_model: CostModel | None = None,
+                 evaluation_start_utc: datetime | None = None,
+                 evaluation_end_utc: datetime | None = None,
+                 outcome_end_utc: datetime | None = None) -> ReplayResult:
+    evaluations = replay_evaluations(symbol, h1, h4, analysis, research,
+                                     evaluation_start_utc, evaluation_end_utc, outcome_end_utc)
+    attempts = simulate_candidates(evaluations, h1, research, cost_model, outcome_end_utc)
+    trades = tuple(attempt.trade for attempt in attempts if attempt.trade is not None)
+    return ReplayResult(evaluations, attempts, trades,
+                        calculate_metrics(evaluations, trades, attempts))
 
 
 @dataclass(frozen=True)
@@ -464,14 +563,6 @@ def build_walk_forward_folds(start: datetime, end: datetime, config: BacktestCon
     return WalkForwardResult(tuple(folds), holdout_start)
 
 
-def _window(result: ReplayResult, start: datetime, end: datetime) -> ReplayResult:
-    evaluations = tuple(item for item in result.evaluations
-                        if start <= item.snapshot.evaluation_time_utc < end)
-    ids = {item.snapshot.evaluation_id for item in evaluations}
-    trades = tuple(trade for trade in result.trades if trade.evaluation_id in ids)
-    return ReplayResult(evaluations, trades, calculate_metrics(evaluations, trades))
-
-
 def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
                      experiments: Sequence[ParameterExperiment], research: BacktestConfig,
                      cost_model: CostModel | None = None) -> WalkForwardValidation:
@@ -489,27 +580,31 @@ def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
     protocol = build_walk_forward_folds(start, end, research)
     results: list[WalkForwardFoldResult] = []
     oos_evaluations: list[BacktestEvaluation] = []
+    oos_attempts: list[SimulationAttempt] = []
     oos_trades: list[SimulatedTrade] = []
     for fold in protocol.folds:
         train_candidates: list[tuple[float, int, str, ParameterExperiment, ReplayResult]] = []
-        full_by_version: dict[str, ReplayResult] = {}
         for experiment in experiments:
-            full = run_backtest(symbol, h1, h4, experiment.analysis, research, cost_model)
-            full_by_version[experiment.parameter_version] = full
-            train = _window(full, fold.train_start_utc, fold.train_end_utc)
+            train = run_backtest(
+                symbol, h1, h4, experiment.analysis, research, cost_model,
+                fold.train_start_utc, fold.train_end_utc, fold.train_end_utc,
+            )
             expectancy = train.metrics.net_known_cost.expectancy_r
             train_candidates.append((expectancy if expectancy is not None else -math.inf,
                                      train.metrics.trade_count, experiment.parameter_version,
                                      experiment, train))
         # Version in the key makes ties stable regardless of input order.
         _, _, _, selected, train = max(train_candidates, key=lambda item: item[:3])
-        test = _window(full_by_version[selected.parameter_version], fold.test_start_utc,
-                       fold.test_end_utc)
+        test = run_backtest(
+            symbol, h1, h4, selected.analysis, research, cost_model,
+            fold.test_start_utc, fold.test_end_utc, fold.test_end_utc,
+        )
         results.append(WalkForwardFoldResult(fold, selected.parameter_version,
                                              train.metrics, test.metrics))
         oos_evaluations.extend(test.evaluations)
+        oos_attempts.extend(test.simulation_attempts)
         oos_trades.extend(test.trades)
-    aggregate = calculate_metrics(oos_evaluations, oos_trades)
+    aggregate = calculate_metrics(oos_evaluations, oos_trades, oos_attempts)
     return WalkForwardValidation(tuple(results), aggregate, protocol.final_holdout_start_utc)
 
 

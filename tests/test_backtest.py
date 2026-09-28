@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
@@ -7,6 +8,8 @@ from types import MappingProxyType
 import pytest
 
 from forex.analysis import (
+    AnalysisResult,
+    AnalysisSnapshot,
     Availability,
     RegimeLabel,
     RegimeState,
@@ -26,7 +29,11 @@ from forex.backtest import (
     monte_carlo,
     parameter_experiment,
     replay_evaluations,
+    run_backtest,
+    run_walk_forward,
+    SimulationStatus,
     simulate_trade,
+    simulate_trade_attempt,
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe
@@ -199,3 +206,126 @@ def test_five_year_gate_refuses_short_engine_verification_data() -> None:
 
 def test_ambiguity_policy_is_explicit() -> None:
     assert AmbiguityPolicy.ADVERSE.value == BacktestConfig().ambiguity_policy
+
+
+def fake_analysis(symbol: str, h1: object, h4: object, evaluation_time: datetime,
+                  config: AnalysisConfig) -> AnalysisResult:
+    """Small deterministic Layer 3 stand-in used only to isolate replay boundary tests."""
+    item = candidate(evaluation=evaluation_time)
+    item = replace(item, candidate_id=evaluation_time.isoformat(),
+                   evaluation_id=evaluation_time.isoformat(),
+                   parameter_version=config.parameter_version)
+    snapshot = AnalysisSnapshot(
+        item.evaluation_id, symbol, evaluation_time, evaluation_time,
+        evaluation_time - timedelta(hours=1), evaluation_time - timedelta(hours=4),
+        config.strategy_version, config.parameter_version, MappingProxyType({}), item.h4_regime,
+        MappingProxyType({}), True, item.side, item.setup_type, item.trade_style, "test", (), (),
+        None, item.session_context, item.volatility_context, item.macro_context,
+    )
+    return AnalysisResult(snapshot, item)
+
+
+def test_training_target_inside_test_is_censored_not_scored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    h1 = [candle(0, open_=1, high=1.05, low=.95, close=1),
+          candle(1, open_=1, high=1.05, low=.95, close=1),
+          candle(2, open_=1, high=1.05, low=.95, close=1),
+          candle(3, open_=1, high=1.2, low=.95, close=1.15)]
+    boundary = START + timedelta(hours=3)
+    result = run_backtest("EURUSD", h1, [candle(0, Timeframe.H4)], AnalysisConfig(),
+                          BacktestConfig(simulation_horizon_bars=10, breakeven_at_r=None),
+                          evaluation_start_utc=START + timedelta(hours=1),
+                          evaluation_end_utc=boundary, outcome_end_utc=boundary)
+    assert not result.trades
+    assert result.metrics.gross.expectancy_r is None
+    assert result.metrics.simulation_status_counts == {"WINDOW_BOUNDARY_CENSORED": 2}
+
+
+def test_test_price_mutation_cannot_change_training_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    base = [candle(i, open_=1, high=1.05, low=.95, close=1) for i in range(8)]
+    changed = list(base)
+    changed[4] = candle(4, open_=2, high=3, low=1, close=2.5)
+    boundary = START + timedelta(hours=4)
+    arguments = ("EURUSD", base, [candle(0, Timeframe.H4)], AnalysisConfig(),
+                 BacktestConfig(simulation_horizon_bars=10, breakeven_at_r=None))
+    before = run_backtest(*arguments, evaluation_start_utc=START + timedelta(hours=1),
+                          evaluation_end_utc=boundary, outcome_end_utc=boundary)
+    after = run_backtest(arguments[0], changed, *arguments[2:],
+                         evaluation_start_utc=START + timedelta(hours=1),
+                         evaluation_end_utc=boundary, outcome_end_utc=boundary)
+    assert before.metrics == after.metrics
+
+
+def test_test_outcomes_and_forward_paths_do_not_cross_test_end(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    h1 = [candle(i, open_=1, high=1.05, low=.95, close=1) for i in range(6)]
+    h1[4] = candle(4, open_=1, high=1.2, low=.95, close=1.15)
+    boundary = START + timedelta(hours=4)
+    result = run_backtest("EURUSD", h1, [candle(0, Timeframe.H4)], AnalysisConfig(),
+                          BacktestConfig(forward_horizons_bars=[5], simulation_horizon_bars=10,
+                                         breakeven_at_r=None),
+                          evaluation_start_utc=START + timedelta(hours=2),
+                          evaluation_end_utc=boundary, outcome_end_utc=boundary)
+    changed = list(h1)
+    changed[4] = candle(4, open_=2, high=3, low=1, close=2.5)
+    changed_result = run_backtest(
+        "EURUSD", changed, [candle(0, Timeframe.H4)], AnalysisConfig(),
+        BacktestConfig(forward_horizons_bars=[5], simulation_horizon_bars=10,
+                       breakeven_at_r=None), evaluation_start_utc=START + timedelta(hours=2),
+        evaluation_end_utc=boundary, outcome_end_utc=boundary,
+    )
+    assert [item.forward_paths for item in result.evaluations] == [
+        item.forward_paths for item in changed_result.evaluations
+    ]
+    assert not result.trades
+    assert all(attempt.status is SimulationStatus.WINDOW_BOUNDARY_CENSORED
+               for attempt in result.simulation_attempts)
+
+
+def test_final_holdout_mutation_cannot_change_folds_or_selection(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    h1 = [candle(i, open_=1, high=1.2, low=.95, close=1.15) for i in range(24 * 12)]
+    h4 = [candle(i, Timeframe.H4) for i in range(24 * 12 // 4)]
+    config = BacktestConfig(train_days=3, test_days=2, step_days=2, final_holdout_days=2,
+                            simulation_horizon_bars=1, breakeven_at_r=None,
+                            forward_horizons_bars=[1])
+    experiments = [parameter_experiment(AnalysisConfig(), {"rsi_period": value})
+                   for value in (10, 12)]
+    before = run_walk_forward("EURUSD", h1, h4, experiments, config)
+    changed = list(h1)
+    holdout_start = before.final_holdout_start_utc
+    assert holdout_start is not None
+    changed = [candle(index, open_=2, high=3, low=1, close=2.5)
+               if item.timestamp_utc >= holdout_start else item
+               for index, item in enumerate(changed)]
+    after = run_walk_forward("EURUSD", changed, h4, experiments, config)
+    assert before == after
+
+
+def test_setup_episode_metrics_preserve_every_candidate_evaluation(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    result = run_backtest(
+        "EURUSD", [candle(i) for i in range(5)], [candle(0, Timeframe.H4)], AnalysisConfig(),
+        BacktestConfig(simulation_horizon_bars=1, breakeven_at_r=None),
+    )
+    assert result.metrics.candidate_count == 5
+    assert result.metrics.setup_episode_count == 1
+    assert result.metrics.average_candidate_evaluations_per_episode == 5
+    assert result.metrics.median_candidate_evaluations_per_episode == 5
+
+
+def test_simulation_drop_off_reasons_are_explicit() -> None:
+    no_bar = simulate_trade_attempt(candidate(), [], BacktestConfig())
+    invalid = simulate_trade_attempt(candidate(), [candle(0, open_=.8, high=.85, low=.75,
+                                                          close=.8)], BacktestConfig())
+    censored = simulate_trade_attempt(
+        candidate(), [candle(0)], BacktestConfig(simulation_horizon_bars=2),
+        outcome_end_utc=START + timedelta(hours=1),
+    )
+    assert no_bar.status is SimulationStatus.NO_NEXT_BAR
+    assert invalid.status is SimulationStatus.NON_POSITIVE_INITIAL_RISK
+    assert censored.status is SimulationStatus.WINDOW_BOUNDARY_CENSORED

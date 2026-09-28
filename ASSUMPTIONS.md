@@ -84,8 +84,12 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
 * Forward return/MFE/MAE paths are labelled after decisions. For rejected states they describe market
   movement from the last closed price only; they are not hypothetical fills or automatically “missed
   trades.” Rejection counts permit later study of over-restrictive filters.
+* Fold outcomes and forward paths stop at the fold boundary. Unresolved simulations are explicitly
+  `WINDOW_BOUNDARY_CENSORED` and excluded from expectancy rather than closed at an invented price.
 * Candidate and trade frequency are reported with expectancy. The 3–8 trades/week design target is a
   calibration target, never an acceptance filter. Fewer trades are not presumed safer.
+* Raw hourly candidate states remain intact. Contiguous symbol/side/setup runs are additionally counted
+  as setup episodes; these and independent candidate simulations are not future executable trade counts.
 * Parameter experiments are explicit, bounded, stable-hashed research candidates. `unvalidated-v1`
   remains unchanged. No winner is written to operator configuration or promoted automatically.
 * Walk-forward folds are deterministic train-then-test intervals. Parameter selection for a fold uses

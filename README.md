@@ -107,11 +107,20 @@ never guessed. Reports separate gross and net-known-cost results and declare an 
 Metrics include counts/frequency, win/loss rates, average wins/losses, expectancy, profit factor,
 payoff, cumulative R, drawdown, streaks, MAE/MFE, holding time, and direction/pair/setup/regime/session/
 DAY-or-SWING breakdowns. The desired 3–8 weekly trades is calibration context, not a veto or proof.
+Raw candidate evaluations are preserved. A setup episode is a contiguous run with the same symbol,
+side, and setup family and ends on a no-candidate state, direction change, or family change. Episodes
+are analytical persistence metadata only: neither candidate evaluations, episodes, nor overlapping
+independent candidate simulations claim to be future live orders. Simulation drop-off is attributed as
+`NO_NEXT_BAR`, `NON_POSITIVE_INITIAL_RISK`, or `WINDOW_BOUNDARY_CENSORED` rather than disappearing.
 Stable `research-<hash>` experiment versions vary validated `AnalysisConfig` copies without editing
 `config.yaml` or promoting `unvalidated-v1`. Walk-forward selection sees each training window only,
 then measures the selected version on its subsequent test; folds stop before the reserved final
 holdout. IID bootstrap Monte Carlo uses a recorded seed and measures outcome-distribution uncertainty,
 not synthetic prices or account-specific ruin; serial/regime-dependence limitations are reported.
+
+Walk-forward outcomes are calculated inside each fold boundary. A position or forward label that has
+not resolved before that boundary is censored and excluded from expectancy; test or final-holdout bars
+are never used to complete an earlier window's outcome.
 
 The baseline is intended for a future learning layer to compare candidate *and rejection* behaviour,
 not to implement “three losses means block trades,” mutate strategy parameters, or veto candidates.

@@ -193,13 +193,17 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
         latest_closed.append(result.evaluations[-1].snapshot.evaluation_time_utc
                              if result.evaluations else h1[-1].timestamp_utc)
         log.info(
-            "%s H1=%s H4=%s history_years=%.2f status=%s evaluations=%s candidates=%s "
-            "trades=%s candidates/week=%.2f trades/week=%.2f gross_expectancy_R=%s "
+            "%s H1=%s H4=%s history_years=%.2f status=%s evaluations=%s "
+            "raw_candidate_evaluations=%s setup_episodes=%s "
+            "independent_simulated_outcomes=%s candidates/week=%.2f episodes/week=%.2f "
+            "independent_outcomes/week=%.2f gross_expectancy_R=%s "
             "net_known_expectancy_R=%s",
             symbol, len(h1), len(h4), gate.available_years, gate.status,
             result.metrics.evaluation_count, result.metrics.candidate_count,
-            result.metrics.trade_count, result.metrics.candidate_frequency_per_week,
-            result.metrics.trades_per_week, result.metrics.gross.expectancy_r,
+            result.metrics.setup_episode_count, result.metrics.trade_count,
+            result.metrics.candidate_frequency_per_week,
+            result.metrics.setup_episodes_per_week, result.metrics.trades_per_week,
+            result.metrics.gross.expectancy_r,
             result.metrics.net_known_cost.expectancy_r,
         )
     eligible = all(gate.sufficient for gate in gates.values())
@@ -219,6 +223,10 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
         "forward_horizons_bars": tuple(config.backtest.forward_horizons_bars),
         "simulation_horizon_bars": config.backtest.simulation_horizon_bars,
         "trade_frequency_target": "3-8/week calibration only; never a veto",
+        "counting_scope": (
+            "Raw candidate evaluations, contiguous setup episodes, and independent candidate "
+            "simulations are research measures; none is a future live-order count."
+        ),
     }
     baseline = StrategyBaseline(max(latest_closed), status, gates, metrics, simulations, False,
                                 protocols, assumptions, warnings)
