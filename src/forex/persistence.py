@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 INSERT OR IGNORE INTO schema_version(version, applied_at_utc)
 VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+INSERT OR IGNORE INTO schema_version(version, applied_at_utc)
+VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 CREATE TABLE IF NOT EXISTS candles (
     symbol TEXT NOT NULL, timeframe TEXT NOT NULL, timestamp_utc TEXT NOT NULL,
     open TEXT NOT NULL, high TEXT NOT NULL, low TEXT NOT NULL, close TEXT NOT NULL,
@@ -97,7 +99,7 @@ class RiskSessionStore:
             connection.execute(
                 """INSERT INTO risk_sessions VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
-                opening_balance=excluded.opening_balance,
+                opening_balance=risk_sessions.opening_balance,
                 circuit_breaker_triggered=MAX(risk_sessions.circuit_breaker_triggered,
                                                excluded.circuit_breaker_triggered),
                 triggered_at_utc=COALESCE(risk_sessions.triggered_at_utc,

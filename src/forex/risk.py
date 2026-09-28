@@ -17,18 +17,51 @@ from forex.domain import AccountState, SymbolSpec
 
 FUSION_POLICY_VERSION = "layer5-fusion-v1-unvalidated"
 RISK_POLICY_VERSION = "layer5-risk-v1-operator"
-MINIMUM_REWARD_RISK = Decimal("1.5")
-MAX_POSITIONS = 4
-MAX_SIMULTANEOUS_RISK = Decimal("0.20")
-DAILY_LOSS_LIMIT = Decimal("0.12")
-MAX_LEVERAGE = 30
+
+
+@dataclass(frozen=True)
+class RiskPolicy:
+    """Immutable broker-neutral policy populated from operator configuration."""
+
+    policy_version: str
+    max_leverage: int
+    minimum_reward_risk: Decimal
+    max_concurrent_positions: int
+    max_simultaneous_risk: Decimal
+    daily_loss_limit: Decimal
+    minimum_conviction: Decimal
+    medium_conviction: Decimal
+    high_conviction: Decimal
+    low_risk_percent: Decimal
+    medium_risk_percent: Decimal
+    high_risk_percent: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.policy_version:
+            raise ValueError("policy_version must not be empty")
+        if self.max_leverage <= 0 or self.max_concurrent_positions <= 0:
+            raise ValueError("leverage and position limits must be positive")
+        if self.minimum_reward_risk < Decimal("1.5"):
+            raise ValueError("minimum reward:risk must be at least 1.5")
+        if not Decimal(0) < self.max_simultaneous_risk <= Decimal(1):
+            raise ValueError("maximum simultaneous risk must be within 0..1")
+        if not Decimal(0) < self.daily_loss_limit <= Decimal(1):
+            raise ValueError("daily loss limit must be within 0..1")
+        if not (Decimal(0) <= self.minimum_conviction < self.medium_conviction
+                < self.high_conviction <= Decimal(100)):
+            raise ValueError("conviction thresholds must satisfy 0 <= minimum < medium < high <= 100")
+        risks = (self.low_risk_percent, self.medium_risk_percent, self.high_risk_percent)
+        if any(not value.is_finite() or not Decimal(0) < value <= Decimal(1) for value in risks):
+            raise ValueError("conviction risk percentages must be within 0..1")
+        if not self.low_risk_percent <= self.medium_risk_percent <= self.high_risk_percent:
+            raise ValueError("conviction risk percentages must be non-decreasing")
 
 
 class ConvictionBand(str, Enum):
-    BELOW_THRESHOLD = "BELOW_55"
-    RISK_2_PERCENT = "55_TO_69"
-    RISK_3_5_PERCENT = "70_TO_84"
-    RISK_5_PERCENT = "85_TO_100"
+    BELOW_THRESHOLD = "BELOW_MINIMUM"
+    RISK_2_PERCENT = "LOW"
+    RISK_3_5_PERCENT = "MEDIUM"
+    RISK_5_PERCENT = "HIGH"
 
 
 class DecisionStatus(str, Enum):
@@ -39,16 +72,16 @@ class DecisionStatus(str, Enum):
 
 
 class RiskBlockReason(str, Enum):
-    CONVICTION_BELOW_55 = "CONVICTION_BELOW_PROVISIONAL_55"
-    INVALID_LEVERAGE = "ACCOUNT_LEVERAGE_EXCEEDS_1_TO_30"
+    CONVICTION_BELOW_MINIMUM = "CONVICTION_BELOW_CONFIGURED_MINIMUM"
+    INVALID_LEVERAGE = "ACCOUNT_LEVERAGE_EXCEEDS_CONFIGURED_MAXIMUM"
     INVALID_STOP_SIDE = "STRUCTURAL_STOP_ON_WRONG_SIDE"
     STOP_TOO_CLOSE = "BROKER_MINIMUM_STOP_DISTANCE_VIOLATED"
     INVALID_SYMBOL_SPEC = "INVALID_TICK_OR_VOLUME_PROPERTIES"
     VOLUME_BELOW_MINIMUM = "BROKER_MINIMUM_VOLUME_EXCEEDS_RISK_BUDGET"
-    REWARD_RISK_BELOW_1_5 = "OBJECTIVE_BELOW_1_5R"
-    MAX_POSITIONS = "MAXIMUM_FOUR_OPEN_POSITIONS"
-    PORTFOLIO_RISK = "MAXIMUM_20_PERCENT_SIMULTANEOUS_RISK"
-    CIRCUIT_BREAKER = "DAILY_12_PERCENT_CIRCUIT_BREAKER"
+    REWARD_RISK_BELOW_1_5 = "OBJECTIVE_BELOW_CONFIGURED_MINIMUM_R"
+    MAX_POSITIONS = "CONFIGURED_MAXIMUM_OPEN_POSITIONS"
+    PORTFOLIO_RISK = "CONFIGURED_MAXIMUM_SIMULTANEOUS_RISK"
+    CIRCUIT_BREAKER = "CONFIGURED_DAILY_LOSS_CIRCUIT_BREAKER"
     KILL_SWITCH = "KILL_SWITCH_ACTIVE"
 
 
@@ -168,7 +201,8 @@ class RiskDecision:
     status: DecisionStatus
     conviction: ConvictionResult
     tier: RiskTier
-    position_plan: PositionRiskPlan | None
+    permitted_position_plan: PositionRiskPlan | None
+    diagnostic_proposal: PositionRiskPlan | None
     existing_portfolio_risk: Decimal
     proposed_portfolio_risk: Decimal
     exposure: ExposureDiagnostics
@@ -176,20 +210,26 @@ class RiskDecision:
     reasons: tuple[RiskBlockReason, ...]
     risk_policy_version: str = RISK_POLICY_VERSION
 
+    def __post_init__(self) -> None:
+        if self.status is DecisionStatus.ELIGIBLE and self.permitted_position_plan is None:
+            raise ValueError("ELIGIBLE decision requires a permitted position plan")
+        if self.status is not DecisionStatus.ELIGIBLE and self.permitted_position_plan is not None:
+            raise ValueError("blocked decision cannot expose a permitted position plan")
 
-def risk_tier(conviction: Decimal) -> RiskTier:
+
+def risk_tier(conviction: Decimal, policy: RiskPolicy) -> RiskTier:
     if not conviction.is_finite() or conviction < 0 or conviction > 100:
         raise ValueError("conviction must be finite and within 0..100")
-    if conviction < 55:
+    if conviction < policy.minimum_conviction:
         return RiskTier(ConvictionBand.BELOW_THRESHOLD, None)
-    if conviction < 70:
-        return RiskTier(ConvictionBand.RISK_2_PERCENT, Decimal("0.02"))
-    if conviction < 85:
-        return RiskTier(ConvictionBand.RISK_3_5_PERCENT, Decimal("0.035"))
-    return RiskTier(ConvictionBand.RISK_5_PERCENT, Decimal("0.05"))
+    if conviction < policy.medium_conviction:
+        return RiskTier(ConvictionBand.RISK_2_PERCENT, policy.low_risk_percent)
+    if conviction < policy.high_conviction:
+        return RiskTier(ConvictionBand.RISK_3_5_PERCENT, policy.medium_risk_percent)
+    return RiskTier(ConvictionBand.RISK_5_PERCENT, policy.high_risk_percent)
 
 
-def derive_conviction(candidate: TradeCandidate,
+def derive_conviction(candidate: TradeCandidate, policy: RiskPolicy,
                       contexts: tuple[ContextualConviction, ...] = ()) -> ConvictionResult:
     """Preserve Layer 3's score: ``(1 - uncertainty) * 100``; exclude unavailable context."""
     technical = (Decimal(1) - Decimal(str(candidate.uncertainty))) * 100
@@ -211,9 +251,9 @@ def derive_conviction(candidate: TradeCandidate,
         weighted += item.conviction * item.confidence
         weight += item.confidence
     final = weighted / weight
-    tier = risk_tier(final)
+    tier = risk_tier(final, policy)
     reasons = (() if tier.risk_percent is not None
-               else (RiskBlockReason.CONVICTION_BELOW_55.value,))
+               else (RiskBlockReason.CONVICTION_BELOW_MINIMUM.value,))
     return ConvictionResult(
         candidate.candidate_id, candidate.evaluation_id, candidate.strategy_version,
         candidate.parameter_version, FUSION_POLICY_VERSION, technical, final,
@@ -222,12 +262,12 @@ def derive_conviction(candidate: TradeCandidate,
     )
 
 
-def evaluate_daily_risk(state: DailyRiskState) -> DailyRiskResult:
+def evaluate_daily_risk(state: DailyRiskState, policy: RiskPolicy) -> DailyRiskResult:
     if state.opening_balance <= 0:
         raise ValueError("session opening balance must be positive")
     loss = max(Decimal(0), (state.opening_balance - state.current_equity)
                / state.opening_balance)
-    circuit = state.circuit_breaker_triggered or loss >= DAILY_LOSS_LIMIT
+    circuit = state.circuit_breaker_triggered or loss >= policy.daily_loss_limit
     reasons: list[RiskBlockReason] = []
     if circuit:
         reasons.append(RiskBlockReason.CIRCUIT_BREAKER)
@@ -238,17 +278,18 @@ def evaluate_daily_risk(state: DailyRiskState) -> DailyRiskResult:
                            blocked, blocked, tuple(reasons))
 
 
-def minimum_objective(side: Side, entry: Decimal, stop: Decimal) -> Decimal:
+def minimum_objective(side: Side, entry: Decimal, stop: Decimal,
+                      policy: RiskPolicy) -> Decimal:
     distance = abs(entry - stop)
-    return (entry + MINIMUM_REWARD_RISK * distance if side is Side.LONG
-            else entry - MINIMUM_REWARD_RISK * distance)
+    return (entry + policy.minimum_reward_risk * distance if side is Side.LONG
+            else entry - policy.minimum_reward_risk * distance)
 
 
 def size_position(account: AccountState, spec: SymbolSpec, side: Side, entry: Decimal,
                   stop: Decimal, risk_percent: Decimal,
-                  objective: Decimal | None = None) -> tuple[PositionRiskPlan | None,
+                  policy: RiskPolicy, objective: Decimal | None = None) -> tuple[PositionRiskPlan | None,
                                                              tuple[RiskBlockReason, ...]]:
-    if account.leverage > MAX_LEVERAGE:
+    if account.leverage > policy.max_leverage:
         return None, (RiskBlockReason.INVALID_LEVERAGE,)
     if (side is Side.LONG and stop >= entry) or (side is Side.SHORT and stop <= entry):
         return None, (RiskBlockReason.INVALID_STOP_SIDE,)
@@ -259,10 +300,10 @@ def size_position(account: AccountState, spec: SymbolSpec, side: Side, entry: De
     distance = abs(entry - stop)
     if distance < Decimal(spec.stops_level_points) * spec.point:
         return None, (RiskBlockReason.STOP_TOO_CLOSE,)
-    min_objective = minimum_objective(side, entry, stop)
+    min_objective = minimum_objective(side, entry, stop, policy)
     if objective is not None:
         reward = ((objective - entry) if side is Side.LONG else (entry - objective))
-        if reward / distance < MINIMUM_REWARD_RISK:
+        if reward / distance < policy.minimum_reward_risk:
             return None, (RiskBlockReason.REWARD_RISK_BELOW_1_5,)
     loss_per_lot = distance / spec.tick_size * spec.tick_value
     budget = account.balance * risk_percent
@@ -338,41 +379,84 @@ def protective_stop(side: Side, entry: Decimal, initial_stop: Decimal,
 def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSpec,
                 entry: Decimal, stop: Decimal, objective: Decimal | None,
                 portfolio: PortfolioRiskState, daily: DailyRiskState,
+                policy: RiskPolicy,
                 contexts: tuple[ContextualConviction, ...] = ()) -> RiskDecision:
-    conviction = derive_conviction(candidate, contexts)
-    tier = risk_tier(conviction.final_conviction)
-    daily_result = evaluate_daily_risk(daily)
+    conviction = derive_conviction(candidate, policy, contexts)
+    tier = risk_tier(conviction.final_conviction, policy)
+    daily_result = evaluate_daily_risk(daily, policy)
     plan: PositionRiskPlan | None = None
     reasons: tuple[RiskBlockReason, ...]
     if daily_result.new_entries_blocked:
         status, reasons = DecisionStatus.HALT_FLATTEN_REQUIRED, daily_result.reasons
     elif tier.risk_percent is None:
         status, reasons = DecisionStatus.SIGNAL_NOT_ELIGIBLE, (
-            RiskBlockReason.CONVICTION_BELOW_55,)
+            RiskBlockReason.CONVICTION_BELOW_MINIMUM,)
     else:
         plan, reasons = size_position(account, spec, candidate.side, entry, stop,
-                                      tier.risk_percent, objective)
+                                      tier.risk_percent, policy, objective)
         status = DecisionStatus.ELIGIBLE if plan else DecisionStatus.HARD_RISK_BLOCK
-        if plan is not None and len(portfolio.positions) >= MAX_POSITIONS:
+        if plan is not None and len(portfolio.positions) >= policy.max_concurrent_positions:
             status, reasons = DecisionStatus.HARD_RISK_BLOCK, (RiskBlockReason.MAX_POSITIONS,)
         if plan is not None and portfolio.existing_risk + plan.actual_risk_amount > \
-                account.balance * MAX_SIMULTANEOUS_RISK:
+                account.balance * policy.max_simultaneous_risk:
             status, reasons = DecisionStatus.HARD_RISK_BLOCK, (RiskBlockReason.PORTFOLIO_RISK,)
     proposal = plan.actual_risk_amount if plan else Decimal(0)
     exposure = exposure_diagnostics(portfolio.positions, candidate.symbol, candidate.side, proposal)
-    stable = json.dumps({"candidate": candidate.candidate_id, "account": str(account.balance),
-                         "entry": str(entry), "stop": str(stop), "objective": str(objective),
-                         "session": daily.session_id, "positions": [repr(p) for p in portfolio.positions],
-                         "policy": RISK_POLICY_VERSION}, sort_keys=True)
+    canonical_positions = sorted(
+        [{"symbol": p.symbol, "side": p.side.value, "entry": str(p.entry),
+          "stop": str(p.current_stop), "volume": str(p.volume),
+          "tick_size": str(p.tick_size), "tick_value": str(p.tick_value)}
+         for p in portfolio.positions],
+        key=lambda item: tuple(item[key] for key in sorted(item)),
+    )
+    stable = json.dumps({
+        "candidate": candidate.candidate_id,
+        "evaluation": candidate.evaluation_id,
+        "account": {"balance": str(account.balance), "equity": str(account.equity),
+                    "leverage": account.leverage, "currency": account.currency},
+        "symbol_spec": {"broker_name": spec.broker_name, "point": str(spec.point),
+                        "tick_size": str(spec.tick_size), "tick_value": str(spec.tick_value),
+                        "volume_min": str(spec.volume_min), "volume_max": str(spec.volume_max),
+                        "volume_step": str(spec.volume_step),
+                        "stops_level_points": spec.stops_level_points},
+        "entry": str(entry), "stop": str(stop), "objective": str(objective),
+        "daily": {"session": daily.session_id, "opening_balance": str(daily.opening_balance),
+                  "current_equity": str(daily.current_equity),
+                  "circuit_breaker_triggered": daily.circuit_breaker_triggered,
+                  "kill_switch_active": daily.kill_switch_active},
+        "positions": canonical_positions,
+        "policy": {"version": policy.policy_version,
+                   "max_leverage": policy.max_leverage,
+                   "minimum_reward_risk": str(policy.minimum_reward_risk),
+                   "max_concurrent_positions": policy.max_concurrent_positions,
+                   "max_simultaneous_risk": str(policy.max_simultaneous_risk),
+                   "daily_loss_limit": str(policy.daily_loss_limit),
+                   "thresholds": [str(policy.minimum_conviction),
+                                  str(policy.medium_conviction),
+                                  str(policy.high_conviction)],
+                   "risk_percentages": [str(policy.low_risk_percent),
+                                        str(policy.medium_risk_percent),
+                                        str(policy.high_risk_percent)]},
+        "contexts": [{"source": item.source, "availability": item.availability.value,
+                      "conviction": str(item.conviction), "confidence": str(item.confidence)}
+                     for item in contexts],
+    }, sort_keys=True)
     identifier = hashlib.sha256(stable.encode()).hexdigest()[:24]
-    return RiskDecision(identifier, status, conviction, tier, plan, portfolio.existing_risk,
+    permitted = plan if status is DecisionStatus.ELIGIBLE else None
+    return RiskDecision(identifier, status, conviction, tier, permitted, plan,
+                        portfolio.existing_risk,
                         portfolio.existing_risk + proposal, exposure,
                         daily_result.flatten_required, reasons)
 
 
 def enforce_layer6_ceiling(plan: PositionRiskPlan, reviewed_volume: Decimal,
-                           reviewed_stop: Decimal, side: Side) -> bool:
+                           reviewed_stop: Decimal, reviewed_objective: Decimal,
+                           side: Side) -> bool:
     """Return whether a future review only preserves or reduces Layer 5 exposure."""
     stop_not_looser = (reviewed_stop >= plan.stop if side is Side.LONG
                        else reviewed_stop <= plan.stop)
-    return Decimal(0) <= reviewed_volume <= plan.volume and stop_not_looser
+    objective_preserved = (reviewed_objective >= plan.minimum_objective
+                           if side is Side.LONG else
+                           reviewed_objective <= plan.minimum_objective)
+    return (Decimal(0) <= reviewed_volume <= plan.volume and stop_not_looser
+            and objective_preserved)

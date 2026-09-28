@@ -132,6 +132,8 @@ technical conviction is exactly `(1 - Layer 3 candidate uncertainty) * 100`; the
 prototype 50/25/25 blend was not restored. Unavailable context is excluded and neutral, not
 converted to zero, opposition, or a veto. The versioned, **UNVALIDATED operator calibration**
 is below 55 ineligible, 55–<70 at 2%, 70–<85 at 3.5%, and 85–100 at 5% balance risk.
+All operator values—including the 55/70/85 boundaries—come solely from the validated `risk`
+section of `config.yaml`; the pure engine receives an immutable `RiskPolicy` and never reads YAML.
 
 Sizing uses runtime broker metadata: `loss_per_lot = abs(entry-stop) / tick_size * tick_value`
 and `raw_volume = balance * risk_percent / loss_per_lot`. Volume is floored to `volume_step`,
@@ -153,6 +155,9 @@ never loosens a stop, and has no guessed default: its multiple is currently
 it cannot enlarge volume/risk, loosen the stop, lower 1.5R, or override portfolio/halt/leverage
 limits. Recent losses do not modify conviction or disable a setup: learning remains a future,
 versioned research/promotion process.
+Only an `ELIGIBLE` decision exposes `permitted_position_plan`; blocked mathematical proposals
+are retained, when available, solely as explicitly non-actionable diagnostics. The Layer 6 ceiling
+also requires a reviewed objective to preserve the directional minimum 1.5R objective.
 
 Layer 4 uses the same Layer 5 conviction function and reports raw-candidate and setup-episode
 band counts separately, plus band-segmented normalized-R results. These are not live trades,

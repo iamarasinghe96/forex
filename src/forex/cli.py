@@ -27,6 +27,7 @@ from forex.logging_setup import configure_logging
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
 from forex.persistence import CandleStore, initialise_database
 from forex.risk import DailyRiskState, PortfolioRiskState, decide_risk
+from forex.risk_policy import policy_from_config
 
 
 def verify(config_path: Path) -> int:
@@ -167,6 +168,7 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
     configure_logging(config)
     log = logging.getLogger("forex.backtest")
     store = CandleStore(config.database.path)
+    policy = policy_from_config(config.risk)
     gates = {}
     metrics = {}
     simulations = {}
@@ -182,7 +184,7 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
             )
         gate = history_gate(h1, h4, config.backtest.minimum_history_years)
         gates[symbol] = gate
-        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest)
+        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest, policy)
         metrics[symbol] = result.metrics
         simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
                                            config.backtest.monte_carlo_seed)
@@ -254,17 +256,24 @@ def verify_risk(config_path: Path) -> int:
     configure_logging(config)
     log = logging.getLogger("forex.risk")
     store = CandleStore(config.database.path)
+    policy = policy_from_config(config.risk)
     broker: MT5Broker | None = None
     try:
         secrets = Secrets()
         broker = MT5Broker(config.broker, secrets.mt5_password)
         account = broker.connect()
         evaluation_time = datetime.now(UTC)
-        log.info("PORTFOLIO LIMIT CHECK: verification fixture only — zero supplied open positions")
+        log.info("PORTFOLIO CHECK: verification fixture — zero supplied open positions")
+        log.info(
+            "DAILY CIRCUIT-BREAKER CHECK: verification fixture — session opening balance set "
+            "to current account balance; no production session latch is being inferred"
+        )
         for symbol in config.broker.symbols:
             h1, h4 = store.load(symbol, Timeframe.H1), store.load(symbol, Timeframe.H4)
             if not h1 or not h4:
                 raise OperatorError(f"Stored H1/H4 history for {symbol} is missing.")
+            validate_candle_freshness(h1[-1], evaluation_time, config.market_data)
+            validate_candle_freshness(h4[-1], evaluation_time, config.market_data)
             result = analyse_market(symbol, h1, h4, evaluation_time, config.analysis)
             if result.candidate is None:
                 log.info("%s: no current Layer 3 candidate (%s)", symbol,
@@ -279,9 +288,9 @@ def verify_risk(config_path: Path) -> int:
             decision = decide_risk(
                 candidate, account, spec, entry, stop, None, PortfolioRiskState(()),
                 DailyRiskState(evaluation_time.date().isoformat(), account.balance,
-                               account.equity),
+                               account.equity), policy,
             )
-            plan = decision.position_plan
+            plan = decision.permitted_position_plan
             log.info(
                 "%s side=%s setup=%s style=%s conviction=%s band=%s risk_percent=%s "
                 "balance=%s risk_budget=%s entry=%s structural_stop=%s objective_1_5R=%s "

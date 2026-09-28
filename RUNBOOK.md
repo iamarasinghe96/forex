@@ -146,8 +146,10 @@ and net-known-cost metrics are research measurements, not realistic-complete-cos
 3. Confirm each candidate summary identifies conviction/band, balance budget, executable
    bid/ask reference, structural stop, 1.5R objective, down-rounded broker volume, actual risk,
    validity, status, and reasons. No candidate is a normal result.
-4. Confirm the output says the portfolio check is a **zero-open-position verification fixture**
-   and ends with `stored/current read-only data only; no order was sent.` Real open-position
+4. Confirm `PORTFOLIO CHECK` uses a **zero-open-position verification fixture** and
+   `DAILY CIRCUIT-BREAKER CHECK` sets session opening balance to current balance without
+   inferring a production latch. It must end with
+   `stored/current read-only data only; no order was sent.` Real open-position
    reconciliation, flattening, breakeven, and trailing execution are reserved for Layer 7.
 
 The daily risk-session ID and its reset boundary must be supplied explicitly by a future
@@ -155,3 +157,5 @@ runtime. Persist a triggered latch and operator kill-switch with `RiskSessionSto
 that table as the authority for open MT5 positions. Circuit-breaker and kill-switch reasons are
 separate, although both require new-entry halt plus flatten intent. The circuit latch cannot be
 cleared by equity recovery within the same session.
+The first opening balance stored for a session ID is authoritative and cannot be replaced by a
+later write; start a new explicit session ID to establish another opening balance.

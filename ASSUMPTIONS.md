@@ -114,6 +114,8 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
 - Score boundaries 55/70/85 are provisional operator policy, not empirical validation. Exact
   risks are 2%, 3.5%, and 5%; below 55 produces no proposal. There is no Kelly sizing,
   loss-streak penalty, drawdown scaling, pair/setup suppression, or learning veto.
+  These values have one operator source: validated `config.yaml` fields converted through
+  `Decimal(str(value))` into an immutable pure-engine policy.
 - Broker tick size/value and stop distance determine loss per lot. Decimal volume always rounds
   down. Invalid stop side, broker minimum stop distance, unaffordable minimum volume, leverage
   above 1:30, objective below 1.5R, four existing positions, or total risk above 20% is a hard
@@ -125,6 +127,7 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
   multiplier is currently unvalidated/not configured. Correlated USD exposure is diagnostic
   metadata only and adds no invented ceiling.
 - Layer 5 is the structural maximum for Layer 6: later review can reduce or veto, never enlarge
-  exposure or weaken a hard control. Layer 4 reports conviction research using normalized R;
+  exposure, loosen a stop, reduce the directional 1.5R objective, or weaken a hard control.
+  Non-eligible and blocked decisions expose no permitted plan. Layer 4 reports normalized R;
   the short history cannot validate five years or honestly reconstruct missing historical
   conversion metadata. The 3–8/week target applies only to future executed trades.
