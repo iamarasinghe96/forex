@@ -86,6 +86,12 @@ unless every pair has at least five years in both H1 and H4. The expected curren
 0.74 years therefore produces **INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION** while still allowing
 engine checks and metrics. This is not a failed engine check and never becomes a validation claim.
 
+Both commands reserve the configured final holdout before replay: decisions and forward outcomes
+stop at its boundary. The baseline contains pre-holdout research metrics and planned walk-forward
+windows only; these commands do not execute fold selection or measure aggregate OOS performance.
+An exit code of zero from `validate-backtest` establishes the history-depth gate and successful
+engine replay, not strategy approval. Generated research reports remain local and are ignored by Git.
+
 At each event, evaluation time is the actual H1 timestamp plus one hour. Layer 3 independently filters
 H1 and H4 to candles whose actual timestamp plus duration is closed, so forming candles and future H4
 states cannot leak in. No UTC modulo rule is used for H4. Forward paths are attached only after the

@@ -111,6 +111,12 @@ and reporting work. Do not interpret this shorter engine verification as strateg
 
 ## Outputs and interpretation
 
+The CLI excludes the configured final holdout from baseline decisions and outcomes. Its
+`walk_forward_protocol` describes planned windows; `assumptions.walk_forward_executed` is false.
+Do not report these baseline metrics as walk-forward/OOS results. A zero validation-command exit
+code is a history-depth/engine result only. Fixed UTC external H4 alignment, missing execution
+costs, and unresolved history gaps still require separate assessment before formal validation.
+
 `reports/backtest/strategy-baseline.json` contains coverage gates, strategy/parameter versions,
 raw candidate, setup-episode, and completed independent-simulation counts, gross and known-cost
 metrics, breakdowns, rejection counts, Monte

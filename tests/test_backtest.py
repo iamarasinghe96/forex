@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -37,12 +39,51 @@ from forex.backtest import (
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe
+from forex.persistence import CandleStore
 from forex.risk import RiskPolicy
 
 START = datetime(2020, 1, 1, tzinfo=UTC)
 POLICY = RiskPolicy(30, Decimal("1.5"), 4, Decimal(".20"),
                     Decimal(".12"), Decimal(55), Decimal(70), Decimal(85),
                     Decimal(".02"), Decimal(".035"), Decimal(".05"))
+
+
+@pytest.mark.parametrize("formal", [False, True])
+def test_cli_baseline_preserves_holdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, formal: bool,
+) -> None:
+    from forex.cli import verify_backtest
+    from forex.config import load_config
+
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    config = load_config(Path("config.yaml"))
+    config.broker.symbols = ["EURUSD"]
+    config.database.path = tmp_path / "history.sqlite3"
+    config.backtest.report_directory = tmp_path / "reports"
+    config.backtest.final_holdout_days = 2
+    config.backtest.monte_carlo_iterations = 10
+    monkeypatch.setattr("forex.cli.load_config", lambda path: config)
+    monkeypatch.setattr("forex.cli.configure_logging", lambda config: None)
+    store = CandleStore(config.database.path)
+    h1 = [candle(i) for i in range(24 * 12)]
+    h4 = [candle(i, Timeframe.H4) for i in range(24 * 12 // 4)]
+    store.upsert(h1 + h4)
+    expected_code = 3 if formal else 0
+    assert verify_backtest(Path("unused"), formal=formal) == expected_code
+    report = config.backtest.report_directory / "strategy-baseline.json"
+    before = json.loads(report.read_text())
+    boundary = datetime.fromisoformat(
+        before["walk_forward_protocol"]["EURUSD"]["final_holdout_start_utc"]
+    )
+    assert datetime.fromisoformat(before["generated_at_utc"]) < boundary
+    assert before["assumptions"]["final_holdout_evaluated"] is False
+    assert before["assumptions"]["walk_forward_executed"] is False
+    store.upsert([
+        replace(item, open=Decimal(2), high=Decimal(3), low=Decimal(1), close=Decimal(2))
+        for item in h1 + h4 if item.timestamp_utc >= boundary
+    ])
+    assert verify_backtest(Path("unused"), formal=formal) == expected_code
+    assert json.loads(report.read_text()) == before
 
 
 def candle(index: int, timeframe: Timeframe = Timeframe.H1, *, open_: float = 1.1,
