@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
@@ -10,8 +10,8 @@ import pytest
 
 from forex.analysis import (Availability, RegimeLabel, RegimeState, RelativeMacroContext,
                             SetupType, Side, TradeCandidate, TradeStyle)
-from forex.domain import AccountMode, AccountState, SymbolSpec
 from forex.config import RiskConfig, load_config
+from forex.domain import AccountMode, AccountState, SymbolSpec
 from forex.persistence import RiskSessionStore
 from forex.risk import (ContextualConviction, DailyRiskState, DecisionStatus, OpenRiskPosition,
                         PortfolioRiskState, RISK_POLICY_IMPLEMENTATION_VERSION, RiskBlockReason, RiskPolicy,
@@ -44,11 +44,12 @@ def account(balance: str = "10000", leverage: int = 30) -> AccountState:
 
 
 def spec(**updates: object) -> SymbolSpec:
-    values = dict(requested_name="EURUSD", broker_name="EURUSD", base_currency="EUR",
-                  profit_currency="USD", digits=5, point=D(".00001"), tick_size=D(".00001"),
-                  tick_value=D("1"), contract_size=D("100000"), volume_min=D(".01"),
-                  volume_max=D("100"), volume_step=D(".01"), stops_level_points=10,
-                  freeze_level_points=0, filling_mode=0)
+    values = {"requested_name": "EURUSD", "broker_name": "EURUSD", "base_currency": "EUR",
+              "profit_currency": "USD", "digits": 5, "point": D(".00001"),
+              "tick_size": D(".00001"), "tick_value": D("1"),
+              "contract_size": D("100000"), "volume_min": D(".01"),
+              "volume_max": D("100"), "volume_step": D(".01"),
+              "stops_level_points": 10, "freeze_level_points": 0, "filling_mode": 0}
     values.update(updates)
     return SymbolSpec(**values)
 
@@ -199,7 +200,9 @@ def position(stop: str = "1.09", symbol: str = "EURUSD", side: Side = Side.LONG,
     return OpenRiskPosition(symbol, side, D("1.1"), D(stop), D(volume), D(".00001"), D("1"))
 
 
-def decision(portfolio: PortfolioRiskState = PortfolioRiskState(()), balance: str = "10000"):
+def decision(portfolio: PortfolioRiskState | None = None, balance: str = "10000"):
+    if portfolio is None:
+        portfolio = PortfolioRiskState(())
     return decide_risk(candidate(.15), account(balance), spec(), D("1.1"), D("1.09"), None,
                        portfolio, DailyRiskState("session", D(balance), D(balance)), POLICY)
 
@@ -273,7 +276,7 @@ def test_risk_session_persistence_latches_and_requires_utc(tmp_path: Path) -> No
     reloaded = store.load("day", D("99"))
     assert reloaded and reloaded.circuit_breaker_triggered and not reloaded.kill_switch_active
     with pytest.raises(ValueError):
-        store.save(DailyRiskState("x", D("1"), D("1")), datetime(2026, 1, 1))
+        store.save(DailyRiskState("x", D("1"), D("1")), NOW.replace(tzinfo=None))
 
 
 def test_session_first_opening_balance_is_authoritative(tmp_path: Path) -> None:

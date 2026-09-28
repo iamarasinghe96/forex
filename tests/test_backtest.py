@@ -41,7 +41,7 @@ from forex.risk import RiskPolicy
 
 START = datetime(2020, 1, 1, tzinfo=UTC)
 POLICY = RiskPolicy(30, Decimal("1.5"), 4, Decimal(".20"),
-                    Decimal(".12"), Decimal("55"), Decimal("70"), Decimal("85"),
+                    Decimal(".12"), Decimal(55), Decimal(70), Decimal(85),
                     Decimal(".02"), Decimal(".035"), Decimal(".05"))
 
 
