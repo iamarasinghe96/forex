@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -23,6 +25,7 @@ from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
 from forex.domain import Timeframe
 from forex.errors import OperatorError
+from forex.history import import_csv, validate_research_database, verify_database
 from forex.logging_setup import configure_logging
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
 from forex.persistence import CandleStore, initialise_database
@@ -162,12 +165,17 @@ def verify_analysis(config_path: Path) -> int:
     return 0
 
 
-def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
+def verify_backtest(config_path: Path, *, formal: bool = False, database: Path | None = None) -> int:
     """Replay SQLite history without MT5, secrets, parameter mutation, or execution APIs."""
     config = load_config(config_path)
     configure_logging(config)
     log = logging.getLogger("forex.backtest")
-    store = CandleStore(config.database.path)
+    store = CandleStore(database or config.database.path)
+    research_dataset = None
+    if database is not None:
+        research_dataset, _ = validate_research_database(
+            database, config.broker.symbols, config.market_data
+        )
     policy = policy_from_config(config.risk)
     gates = {}
     metrics = {}
@@ -232,9 +240,13 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
             "simulations are research measures; none is a future live-order count."
         ),
     }
-    baseline = StrategyBaseline(max(latest_closed), status, gates, metrics, simulations, False,
-                                protocols, assumptions, warnings)
-    report_path = config.backtest.report_directory / "strategy-baseline.json"
+    baseline = StrategyBaseline(
+        max(latest_closed), status, gates, metrics, simulations, False, protocols, assumptions,
+        warnings, asdict(research_dataset) if research_dataset else None,
+    )
+    report_name = (f"research-baseline-{research_dataset.fingerprint}.json"
+                   if research_dataset else "strategy-baseline.json")
+    report_path = config.backtest.report_directory / report_name
     write_json_report(report_path, baseline)
     for warning in warnings:
         log.warning("%s", warning)
@@ -246,8 +258,8 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
     return 0
 
 
-def full_validation(config_path: Path) -> int:
-    return verify_backtest(config_path, formal=True)
+def full_validation(config_path: Path, database: Path | None = None) -> int:
+    return verify_backtest(config_path, formal=True, database=database)
 
 
 def verify_risk(config_path: Path) -> int:
@@ -316,11 +328,40 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
-                            "verify-backtest", "validate-backtest", "verify-risk"]
+                            "verify-backtest", "validate-backtest", "verify-risk",
+                            "import-history", "verify-history"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
+    parser.add_argument("--research-database", type=Path)
+    parser.add_argument("--file", type=Path)
+    parser.add_argument("--dataset")
+    parser.add_argument("--provider")
+    parser.add_argument("--symbol")
+    parser.add_argument("--price-type", choices=["bid", "ask", "midpoint", "ohlc"])
+    parser.add_argument("--spread-available", action="store_true")
+    parser.add_argument("--volume-semantics", default="unavailable")
+    parser.add_argument("--h4-alignment-hour-utc", type=int, default=0)
     args = parser.parse_args()
     try:
+        if args.command == "import-history":
+            if not all((args.research_database, args.file, args.dataset, args.provider,
+                        args.symbol, args.price_type)):
+                parser.error("import-history requires --research-database, --file, --dataset, --provider, --symbol and --price-type")
+            result = import_csv(args.file, args.research_database, dataset=args.dataset,
+                                provider=args.provider, symbol=args.symbol, source_timezone="UTC",
+                                price_type=args.price_type, spread_available=args.spread_available,
+                                volume_semantics=args.volume_semantics,
+                                h4_alignment_hour_utc=args.h4_alignment_hour_utc)
+            print(json.dumps(asdict(result), default=str, indent=2))
+            raise SystemExit(0)
+        if args.command == "verify-history":
+            if args.research_database is None:
+                parser.error("verify-history requires --research-database")
+            config = load_config(args.config)
+            for report in verify_database(args.research_database, config.broker.symbols,
+                                          config.market_data):
+                print(json.dumps(asdict(report), default=str))
+            raise SystemExit(0)
         commands = {
             "verify-foundation": verify,
             "verify-market-data": verify_market_data,
@@ -329,6 +370,9 @@ def main() -> None:
             "validate-backtest": full_validation,
             "verify-risk": verify_risk,
         }
+        if args.command in {"verify-backtest", "validate-backtest"}:
+            raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",
+                                             database=args.research_database))
         command = commands[args.command]
         raise SystemExit(command(args.config))
     except OperatorError as exc:
