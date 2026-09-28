@@ -1,0 +1,47 @@
+# All operator-tunable, non-secret settings live in this file. Secrets belong in .env.
+mode: paper                    # Keep paper until the paper soak layer is signed off.
+operator_timezone: Australia/Sydney
+
+broker:
+  login: 23008397
+  server: ICMarketsAU-Demo
+  terminal_path: null          # null lets MetaTrader5 find the installed terminal.
+  account_currency: AUD        # Startup fails if MT5 reports a different currency.
+  symbols: [EURUSD, GBPUSD, USDJPY]
+  magic_number: 26092801
+  connect_timeout_seconds: 30
+
+logging:
+  directory: logs
+  max_bytes: 10485760
+  backup_count: 10
+
+database:
+  path: data/forex.sqlite3
+
+market_data:
+  timeframes: [H1, H4]
+  recent_candle_count: 200
+  history_chunk_size: 50000
+  mt5_retry_attempts: 3
+  mt5_retry_delay_seconds: 2.0
+  stale_after_minutes: {H1: 180, H4: 480}
+  # UNVALIDATED — configurable approximation of the normal global FX weekend closure in UTC.
+  weekend_close_utc_hour: 22
+  weekend_open_utc_hour: 22
+
+telegram:
+  enabled: false
+  timeout_seconds: 10
+
+# Reserved risk profile; implemented in Layer 5, not used to place orders in Layer 1.
+risk:
+  max_leverage: 30
+  minimum_reward_risk: 1.5
+  max_concurrent_positions: 4
+  max_simultaneous_risk_percent: 20
+  daily_loss_percent: 12
+  tax_reserve_percent: 32.5
+  # At 5% risk, 8 consecutive full-risk losses compound to about a 33.7% drawdown.
+  conviction_risk_percent: {low: 2.0, medium: 3.5, high: 5.0}
+  target_trades_per_week: {minimum: 3, maximum: 8}

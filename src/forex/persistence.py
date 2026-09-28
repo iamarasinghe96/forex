@@ -1,0 +1,41 @@
+"""Transactional local persistence foundation."""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at_utc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, payload_json TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL, synced_at_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS candles (
+    symbol TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    time_utc TEXT NOT NULL,
+    open TEXT NOT NULL,
+    high TEXT NOT NULL,
+    low TEXT NOT NULL,
+    close TEXT NOT NULL,
+    tick_volume INTEGER NOT NULL,
+    spread INTEGER NOT NULL,
+    real_volume INTEGER NOT NULL,
+    PRIMARY KEY (symbol, timeframe, time_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_candles_lookup
+ON candles(symbol, timeframe, time_utc);
+INSERT OR IGNORE INTO schema_version(version, applied_at_utc)
+VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+"""
+
+
+def initialise_database(path: Path) -> None:
+    """Create the local database atomically and enable crash-resistant WAL journaling."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.executescript(SCHEMA)
