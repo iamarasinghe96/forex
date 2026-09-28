@@ -29,6 +29,7 @@ from forex.analysis import (
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe, _require_utc
+from forex.risk import ConvictionBand, RiskPolicy, derive_conviction
 
 
 class ComponentStatus(str, Enum):
@@ -199,6 +200,10 @@ class BacktestMetrics:
     by_session: Mapping[str, MetricSlice]
     by_trade_style: Mapping[str, MetricSlice]
     by_volatility_bucket: Mapping[str, MetricSlice]
+    by_conviction_band: Mapping[str, MetricSlice]
+    conviction_distribution: tuple[float, ...]
+    raw_candidates_by_conviction_band: Mapping[str, int]
+    setup_episode_starts_by_conviction_band: Mapping[str, int]
     rejection_reasons: Mapping[str, int]
     simulation_status_counts: Mapping[str, int]
     strategy_version: str
@@ -445,7 +450,21 @@ def _episode_lengths(evaluations: Sequence[BacktestEvaluation]) -> list[int]:
     return lengths
 
 
+def _episode_start_candidates(evaluations: Sequence[BacktestEvaluation]) -> list[TradeCandidate]:
+    starts: list[TradeCandidate] = []
+    active_key: tuple[str, Side, object] | None = None
+    for evaluation in evaluations:
+        candidate = evaluation.candidate
+        key = ((candidate.symbol, candidate.side, candidate.setup_type)
+               if candidate is not None else None)
+        if candidate is not None and key != active_key:
+            starts.append(candidate)
+        active_key = key
+    return starts
+
+
 def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequence[SimulatedTrade],
+                      policy: RiskPolicy,
                       simulation_attempts: Sequence[SimulationAttempt] = ()) -> BacktestMetrics:
     snapshots = [item.snapshot for item in evaluations]
     if snapshots:
@@ -458,6 +477,17 @@ def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequenc
     episode_lengths = _episode_lengths(evaluations)
     rejections = Counter(item.snapshot.no_candidate_reason or "UNSPECIFIED"
                          for item in evaluations if item.candidate is None)
+    candidate_items = [item.candidate for item in evaluations if item.candidate is not None]
+    conviction_by_id = {candidate.candidate_id: derive_conviction(candidate, policy)
+                        for candidate in candidate_items}
+    conviction_counts = Counter(result.band.value for result in conviction_by_id.values())
+    episode_counts = Counter(derive_conviction(candidate, policy).band.value
+                             for candidate in _episode_start_candidates(evaluations))
+    trades_by_band: dict[str, list[SimulatedTrade]] = defaultdict(list)
+    for trade in trades:
+        result = conviction_by_id.get(trade.candidate_id)
+        if result is not None:
+            trades_by_band[result.band.value].append(trade)
     return BacktestMetrics(
         len(evaluations), candidates, len(trades), weeks, candidates / weeks if weeks else 0,
         len(episode_lengths), len(episode_lengths) / weeks if weeks else 0,
@@ -468,14 +498,19 @@ def calculate_metrics(evaluations: Sequence[BacktestEvaluation], trades: Sequenc
         _breakdown(trades, lambda t: t.symbol), _breakdown(trades, lambda t: t.setup_family),
         _breakdown(trades, lambda t: t.regime), _breakdown(trades, lambda t: t.sessions),
         _breakdown(trades, lambda t: t.trade_style),
-        _breakdown(trades, lambda t: t.volatility_bucket), dict(sorted(rejections.items())),
+        _breakdown(trades, lambda t: t.volatility_bucket),
+        {band: _metric_slice(group, net=True) for band, group in sorted(trades_by_band.items())},
+        tuple(float(result.final_conviction) for result in conviction_by_id.values()),
+        {band.value: conviction_counts.get(band.value, 0) for band in ConvictionBand},
+        {band.value: episode_counts.get(band.value, 0) for band in ConvictionBand},
+        dict(sorted(rejections.items())),
         dict(sorted(Counter(attempt.status.value for attempt in simulation_attempts).items())),
         strategy, parameter,
     )
 
 
 def run_backtest(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle], analysis: AnalysisConfig,
-                 research: BacktestConfig, cost_model: CostModel | None = None,
+                 research: BacktestConfig, policy: RiskPolicy, cost_model: CostModel | None = None,
                  evaluation_start_utc: datetime | None = None,
                  evaluation_end_utc: datetime | None = None,
                  outcome_end_utc: datetime | None = None) -> ReplayResult:
@@ -484,7 +519,7 @@ def run_backtest(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle], analys
     attempts = simulate_candidates(evaluations, h1, research, cost_model, outcome_end_utc)
     trades = tuple(attempt.trade for attempt in attempts if attempt.trade is not None)
     return ReplayResult(evaluations, attempts, trades,
-                        calculate_metrics(evaluations, trades, attempts))
+                        calculate_metrics(evaluations, trades, policy, attempts))
 
 
 @dataclass(frozen=True)
@@ -565,6 +600,7 @@ def build_walk_forward_folds(start: datetime, end: datetime, config: BacktestCon
 
 def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
                      experiments: Sequence[ParameterExperiment], research: BacktestConfig,
+                     policy: RiskPolicy,
                      cost_model: CostModel | None = None) -> WalkForwardValidation:
     """Select on each train window and evaluate that selection on its subsequent test only.
 
@@ -586,7 +622,7 @@ def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
         train_candidates: list[tuple[float, int, str, ParameterExperiment, ReplayResult]] = []
         for experiment in experiments:
             train = run_backtest(
-                symbol, h1, h4, experiment.analysis, research, cost_model,
+                symbol, h1, h4, experiment.analysis, research, policy, cost_model,
                 fold.train_start_utc, fold.train_end_utc, fold.train_end_utc,
             )
             expectancy = train.metrics.net_known_cost.expectancy_r
@@ -596,7 +632,7 @@ def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
         # Version in the key makes ties stable regardless of input order.
         _, _, _, selected, train = max(train_candidates, key=lambda item: item[:3])
         test = run_backtest(
-            symbol, h1, h4, selected.analysis, research, cost_model,
+            symbol, h1, h4, selected.analysis, research, policy, cost_model,
             fold.test_start_utc, fold.test_end_utc, fold.test_end_utc,
         )
         results.append(WalkForwardFoldResult(fold, selected.parameter_version,
@@ -604,7 +640,7 @@ def run_walk_forward(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
         oos_evaluations.extend(test.evaluations)
         oos_attempts.extend(test.simulation_attempts)
         oos_trades.extend(test.trades)
-    aggregate = calculate_metrics(oos_evaluations, oos_trades, oos_attempts)
+    aggregate = calculate_metrics(oos_evaluations, oos_trades, policy, oos_attempts)
     return WalkForwardValidation(tuple(results), aggregate, protocol.final_holdout_start_utc)
 
 

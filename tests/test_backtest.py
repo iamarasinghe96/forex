@@ -37,8 +37,12 @@ from forex.backtest import (
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe
+from forex.risk import RiskPolicy
 
 START = datetime(2020, 1, 1, tzinfo=UTC)
+POLICY = RiskPolicy(30, Decimal("1.5"), 4, Decimal(".20"),
+                    Decimal(".12"), Decimal(55), Decimal(70), Decimal(85),
+                    Decimal(".02"), Decimal(".035"), Decimal(".05"))
 
 
 def candle(index: int, timeframe: Timeframe = Timeframe.H1, *, open_: float = 1.1,
@@ -153,7 +157,7 @@ def test_metrics_breakdowns_expectancy_drawdown_streaks_and_frequency() -> None:
     loss = simulate_trade(candidate(evaluation=START + timedelta(hours=2)), bars[1:],
                           BacktestConfig(simulation_horizon_bars=1, breakeven_at_r=None))
     assert win and loss
-    metrics = calculate_metrics([], [win, loss])
+    metrics = calculate_metrics([], [win, loss], POLICY)
     assert metrics.gross.expectancy_r == pytest.approx(.25)
     assert metrics.gross.maximum_drawdown_r == pytest.approx(1)
     assert metrics.gross.maximum_consecutive_losses == 1
@@ -234,6 +238,7 @@ def test_training_target_inside_test_is_censored_not_scored(monkeypatch: pytest.
     boundary = START + timedelta(hours=3)
     result = run_backtest("EURUSD", h1, [candle(0, Timeframe.H4)], AnalysisConfig(),
                           BacktestConfig(simulation_horizon_bars=10, breakeven_at_r=None),
+                          POLICY,
                           evaluation_start_utc=START + timedelta(hours=1),
                           evaluation_end_utc=boundary, outcome_end_utc=boundary)
     assert not result.trades
@@ -248,7 +253,7 @@ def test_test_price_mutation_cannot_change_training_metrics(monkeypatch: pytest.
     changed[4] = candle(4, open_=2, high=3, low=1, close=2.5)
     boundary = START + timedelta(hours=4)
     arguments = ("EURUSD", base, [candle(0, Timeframe.H4)], AnalysisConfig(),
-                 BacktestConfig(simulation_horizon_bars=10, breakeven_at_r=None))
+                 BacktestConfig(simulation_horizon_bars=10, breakeven_at_r=None), POLICY)
     before = run_backtest(*arguments, evaluation_start_utc=START + timedelta(hours=1),
                           evaluation_end_utc=boundary, outcome_end_utc=boundary)
     after = run_backtest(arguments[0], changed, *arguments[2:],
@@ -266,6 +271,7 @@ def test_test_outcomes_and_forward_paths_do_not_cross_test_end(
     result = run_backtest("EURUSD", h1, [candle(0, Timeframe.H4)], AnalysisConfig(),
                           BacktestConfig(forward_horizons_bars=[5], simulation_horizon_bars=10,
                                          breakeven_at_r=None),
+                          POLICY,
                           evaluation_start_utc=START + timedelta(hours=2),
                           evaluation_end_utc=boundary, outcome_end_utc=boundary)
     changed = list(h1)
@@ -273,7 +279,8 @@ def test_test_outcomes_and_forward_paths_do_not_cross_test_end(
     changed_result = run_backtest(
         "EURUSD", changed, [candle(0, Timeframe.H4)], AnalysisConfig(),
         BacktestConfig(forward_horizons_bars=[5], simulation_horizon_bars=10,
-                       breakeven_at_r=None), evaluation_start_utc=START + timedelta(hours=2),
+                       breakeven_at_r=None), POLICY,
+        evaluation_start_utc=START + timedelta(hours=2),
         evaluation_end_utc=boundary, outcome_end_utc=boundary,
     )
     assert [item.forward_paths for item in result.evaluations] == [
@@ -294,14 +301,14 @@ def test_final_holdout_mutation_cannot_change_folds_or_selection(
                             forward_horizons_bars=[1])
     experiments = [parameter_experiment(AnalysisConfig(), {"rsi_period": value})
                    for value in (10, 12)]
-    before = run_walk_forward("EURUSD", h1, h4, experiments, config)
+    before = run_walk_forward("EURUSD", h1, h4, experiments, config, POLICY)
     changed = list(h1)
     holdout_start = before.final_holdout_start_utc
     assert holdout_start is not None
     changed = [candle(index, open_=2, high=3, low=1, close=2.5)
                if item.timestamp_utc >= holdout_start else item
                for index, item in enumerate(changed)]
-    after = run_walk_forward("EURUSD", changed, h4, experiments, config)
+    after = run_walk_forward("EURUSD", changed, h4, experiments, config, POLICY)
     assert before == after
 
 
@@ -310,7 +317,7 @@ def test_setup_episode_metrics_preserve_every_candidate_evaluation(
     monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
     result = run_backtest(
         "EURUSD", [candle(i) for i in range(5)], [candle(0, Timeframe.H4)], AnalysisConfig(),
-        BacktestConfig(simulation_horizon_bars=1, breakeven_at_r=None),
+        BacktestConfig(simulation_horizon_bars=1, breakeven_at_r=None), POLICY,
     )
     assert result.metrics.candidate_count == 5
     assert result.metrics.setup_episode_count == 1

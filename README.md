@@ -124,3 +124,44 @@ are never used to complete an earlier window's outcome.
 
 The baseline is intended for a future learning layer to compare candidate *and rejection* behaviour,
 not to implement “three losses means block trades,” mutate strategy parameters, or veto candidates.
+
+## Layer 5: deterministic exposure ceiling
+
+Layer 5 is calculation and policy only: it cannot place, modify, or close an order. Its
+technical conviction is exactly `(1 - Layer 3 candidate uncertainty) * 100`; the obsolete
+prototype 50/25/25 blend was not restored. Unavailable context is excluded and neutral, not
+converted to zero, opposition, or a veto. The versioned, **UNVALIDATED operator calibration**
+is below 55 ineligible, 55–<70 at 2%, 70–<85 at 3.5%, and 85–100 at 5% balance risk.
+All operator values—including the 55/70/85 boundaries—come solely from the validated `risk`
+section of `config.yaml`; the pure engine receives an immutable `RiskPolicy` and never reads YAML.
+
+Sizing uses runtime broker metadata: `loss_per_lot = abs(entry-stop) / tick_size * tick_value`
+and `raw_volume = balance * risk_percent / loss_per_lot`. Volume is floored to `volume_step`,
+never raised to `volume_min`, and may be capped at `volume_max`; the result is rejected if the
+minimum volume would exceed budget. Structural Layer 3 invalidation is retained, must be on
+the correct side of entry, and must satisfy `stops_level_points * point`. The minimum objective
+is exactly 1.5R (a policy reference, not a mandatory hard take-profit).
+
+Portfolio policy permits at most four open positions and 20% of current balance in remaining
+worst-case stop risk. Breakeven-or-better stops contribute zero, never negative credit. USD
+currency-direction concentration is reported without a hidden correlation veto. A 12% loss
+from explicit session-opening balance latches the daily circuit breaker; an independent kill
+switch also blocks entries. Either emits `FLATTEN_REQUIRED` intent, but Layer 5 performs no
+flattening. The latch has transactional SQLite persistence.
+
+At +1R, the protective stop may move to entry. ATR trailing can begin only after that stage,
+never loosens a stop, and has no guessed default: its multiple is currently
+`UNVALIDATED_NOT_CONFIGURED`. Future Layer 6 may approve unchanged, reduce volume, or veto;
+it cannot enlarge volume/risk, loosen the stop, lower 1.5R, or override portfolio/halt/leverage
+limits. Recent losses do not modify conviction or disable a setup: learning remains a future,
+versioned research/promotion process.
+Only an `ELIGIBLE` decision exposes `permitted_position_plan`; blocked mathematical proposals
+are retained, when available, solely as explicitly non-actionable diagnostics. The Layer 6 ceiling
+also requires a reviewed objective to preserve the directional minimum 1.5R objective.
+
+Layer 4 uses the same Layer 5 conviction function and reports raw-candidate and setup-episode
+band counts separately, plus band-segmented normalized-R results. These are not live trades,
+and unavailable historical account-currency metadata is not fabricated. Formal status remains
+`INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION` until five real years exist. Run
+`forex verify-risk` for a read-only current calculation; its portfolio check deliberately uses a
+zero-position verification fixture because Layer 7 reconciliation does not exist.

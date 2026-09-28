@@ -104,3 +104,30 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
   comparison but implements no diagnosis, veto, recent-loss throttle, or strategy mutation.
 * Layer 4 contains no balance-based sizing, portfolio controls, live execution, broker order calls,
   LLM/news inference, production journal/dashboard, paper daemon, or deployment implementation.
+
+## Layer 5 operator policy and limitations
+
+- `layer5-fusion-v1-unvalidated` maps the existing Layer 3 score via
+  `(1 - uncertainty) * 100`; it introduces no indicator reweighting and no 50/25/25 fusion.
+  Unavailable macro/news/context is excluded. Available future deterministic context can be
+  confidence-weighted without requiring unanimity; no external-provider veto threshold exists.
+- Score boundaries 55/70/85 are provisional operator policy, not empirical validation. Exact
+  risks are 2%, 3.5%, and 5%; below 55 produces no proposal. There is no Kelly sizing,
+  loss-streak penalty, drawdown scaling, pair/setup suppression, or learning veto.
+  These values have one operator source: validated `config.yaml` fields converted through
+  `Decimal(str(value))` into an immutable pure-engine policy.
+- Broker tick size/value and stop distance determine loss per lot. Decimal volume always rounds
+  down. Invalid stop side, broker minimum stop distance, unaffordable minimum volume, leverage
+  above 1:30, objective below 1.5R, four existing positions, or total risk above 20% is a hard
+  policy block.
+- The daily limit is 12% of supplied session-opening balance versus current equity and is
+  latched transactionally in SQLite. The kill switch is independently persisted. Both emit
+  flatten intent only; no order API is present.
+- Breakeven becomes eligible at +1R. ATR trailing follows breakeven and is monotonic, but its
+  multiplier is currently unvalidated/not configured. Correlated USD exposure is diagnostic
+  metadata only and adds no invented ceiling.
+- Layer 5 is the structural maximum for Layer 6: later review can reduce or veto, never enlarge
+  exposure, loosen a stop, reduce the directional 1.5R objective, or weaken a hard control.
+  Non-eligible and blocked decisions expose no permitted plan. Layer 4 reports normalized R;
+  the short history cannot validate five years or honestly reconstruct missing historical
+  conversion metadata. The 3–8/week target applies only to future executed trades.

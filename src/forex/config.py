@@ -130,7 +130,25 @@ class RiskConfig(BaseModel):
     daily_loss_percent: float = Field(gt=0)
     tax_reserve_percent: float = Field(ge=0, le=100)
     conviction_risk_percent: dict[str, float]
+    conviction_thresholds: dict[str, float]
     target_trades_per_week: dict[str, int]
+
+    @model_validator(mode="after")
+    def valid_conviction_policy(self) -> RiskConfig:
+        expected = {"low", "medium", "high"}
+        if set(self.conviction_risk_percent) != expected:
+            raise ValueError("conviction_risk_percent requires exactly low, medium, high")
+        if any(not 0 < value <= 100 for value in self.conviction_risk_percent.values()):
+            raise ValueError("conviction risk percentages must be within 0..100")
+        risks = self.conviction_risk_percent
+        if not risks["low"] <= risks["medium"] <= risks["high"]:
+            raise ValueError("conviction risk percentages must be non-decreasing")
+        thresholds = self.conviction_thresholds
+        if set(thresholds) != {"minimum", "medium", "high"}:
+            raise ValueError("conviction_thresholds requires exactly minimum, medium, high")
+        if not 0 <= thresholds["minimum"] < thresholds["medium"] < thresholds["high"] <= 100:
+            raise ValueError("conviction thresholds must satisfy 0 <= minimum < medium < high <= 100")
+        return self
 
 
 class AppConfig(BaseModel):

@@ -138,3 +138,24 @@ OHLC ambiguity defaults to adverse stop-first. Next-bar open is the entry assump
 trailing changes activate only after a bar. Commission, slippage, swap, and other fees are unavailable;
 spread needs captured point metadata and remains only a candle-level approximation. Consequently gross
 and net-known-cost metrics are research measurements, not realistic-complete-cost profitability.
+
+## Verify Layer 5 risk policy (read-only)
+
+1. Refresh stored candles with `forex verify-market-data` while MT5 is available.
+2. Run `forex verify-risk --config config.yaml`.
+3. Confirm each candidate summary identifies conviction/band, balance budget, executable
+   bid/ask reference, structural stop, 1.5R objective, down-rounded broker volume, actual risk,
+   validity, status, and reasons. No candidate is a normal result.
+4. Confirm `PORTFOLIO CHECK` uses a **zero-open-position verification fixture** and
+   `DAILY CIRCUIT-BREAKER CHECK` sets session opening balance to current balance without
+   inferring a production latch. It must end with
+   `stored/current read-only data only; no order was sent.` Real open-position
+   reconciliation, flattening, breakeven, and trailing execution are reserved for Layer 7.
+
+The daily risk-session ID and its reset boundary must be supplied explicitly by a future
+runtime. Persist a triggered latch and operator kill-switch with `RiskSessionStore`; never use
+that table as the authority for open MT5 positions. Circuit-breaker and kill-switch reasons are
+separate, although both require new-entry halt plus flatten intent. The circuit latch cannot be
+cleared by equity recovery within the same session.
+The first opening balance stored for a session ID is authoritative and cannot be replaced by a
+later write; start a new explicit session ID to establish another opening balance.

@@ -9,4 +9,6 @@ def test_initialise_database_is_idempotent_and_uses_wal(tmp_path):
     initialise_database(path)
     with sqlite3.connect(path) as connection:
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert connection.execute("SELECT count(*) FROM schema_version").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT version FROM schema_version ORDER BY version"
+        ).fetchall() == [(1,), (2,)]

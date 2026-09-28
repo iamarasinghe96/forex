@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -25,6 +26,8 @@ from forex.errors import OperatorError
 from forex.logging_setup import configure_logging
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
 from forex.persistence import CandleStore, initialise_database
+from forex.risk import DailyRiskState, PortfolioRiskState, decide_risk
+from forex.risk_policy import policy_from_config
 
 
 def verify(config_path: Path) -> int:
@@ -165,6 +168,7 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
     configure_logging(config)
     log = logging.getLogger("forex.backtest")
     store = CandleStore(config.database.path)
+    policy = policy_from_config(config.risk)
     gates = {}
     metrics = {}
     simulations = {}
@@ -180,7 +184,7 @@ def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
             )
         gate = history_gate(h1, h4, config.backtest.minimum_history_years)
         gates[symbol] = gate
-        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest)
+        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest, policy)
         metrics[symbol] = result.metrics
         simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
                                            config.backtest.monte_carlo_seed)
@@ -246,11 +250,73 @@ def full_validation(config_path: Path) -> int:
     return verify_backtest(config_path, formal=True)
 
 
+def verify_risk(config_path: Path) -> int:
+    """Calculate Layer 5 ceilings from read-only inputs; no execution API exists here."""
+    config = load_config(config_path)
+    configure_logging(config)
+    log = logging.getLogger("forex.risk")
+    store = CandleStore(config.database.path)
+    policy = policy_from_config(config.risk)
+    broker: MT5Broker | None = None
+    try:
+        secrets = Secrets()
+        broker = MT5Broker(config.broker, secrets.mt5_password)
+        account = broker.connect()
+        evaluation_time = datetime.now(UTC)
+        log.info("PORTFOLIO CHECK: verification fixture — zero supplied open positions")
+        log.info(
+            "DAILY CIRCUIT-BREAKER CHECK: verification fixture — session opening balance set "
+            "to current account balance; no production session latch is being inferred"
+        )
+        for symbol in config.broker.symbols:
+            h1, h4 = store.load(symbol, Timeframe.H1), store.load(symbol, Timeframe.H4)
+            if not h1 or not h4:
+                raise OperatorError(f"Stored H1/H4 history for {symbol} is missing.")
+            validate_candle_freshness(h1[-1], evaluation_time, config.market_data)
+            validate_candle_freshness(h4[-1], evaluation_time, config.market_data)
+            result = analyse_market(symbol, h1, h4, evaluation_time, config.analysis)
+            if result.candidate is None:
+                log.info("%s: no current Layer 3 candidate (%s)", symbol,
+                         result.snapshot.no_candidate_reason)
+                continue
+            candidate = result.candidate
+            spec = broker.resolve_symbol(symbol)
+            tick = broker.tick(spec.broker_name)
+            entry = tick.ask if candidate.side.value == "LONG" else tick.bid
+            stop_key = "rolling_low" if candidate.side.value == "LONG" else "rolling_high"
+            stop = Decimal(str(candidate.structural_reference_levels[stop_key]))
+            decision = decide_risk(
+                candidate, account, spec, entry, stop, None, PortfolioRiskState(()),
+                DailyRiskState(evaluation_time.date().isoformat(), account.balance,
+                               account.equity), policy,
+            )
+            plan = decision.permitted_position_plan
+            log.info(
+                "%s side=%s setup=%s style=%s conviction=%s band=%s risk_percent=%s "
+                "balance=%s risk_budget=%s entry=%s structural_stop=%s objective_1_5R=%s "
+                "volume=%s actual_risk=%s stop_valid=%s decision=%s reasons=%s",
+                symbol, candidate.side.value, candidate.setup_type.value,
+                candidate.trade_style.value, decision.conviction.final_conviction,
+                decision.tier.band.value, decision.tier.risk_percent, account.balance,
+                plan.requested_risk_amount if plan else "N/A", entry, stop,
+                plan.minimum_objective if plan else "N/A", plan.volume if plan else "N/A",
+                plan.actual_risk_amount if plan else "N/A", "YES" if plan else "NO",
+                decision.status.value, ",".join(reason.value for reason in decision.reasons) or "NONE",
+            )
+        log.info("stored/current read-only data only; no order was sent.")
+        return 0
+    except ValidationError as exc:
+        raise OperatorError(f"Required MT5 secrets are missing or invalid: {exc}") from exc
+    finally:
+        if broker is not None:
+            broker.disconnect()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
-                            "verify-backtest", "validate-backtest"]
+                            "verify-backtest", "validate-backtest", "verify-risk"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     args = parser.parse_args()
@@ -261,6 +327,7 @@ def main() -> None:
             "verify-analysis": verify_analysis,
             "verify-backtest": verify_backtest,
             "validate-backtest": full_validation,
+            "verify-risk": verify_risk,
         }
         command = commands[args.command]
         raise SystemExit(command(args.config))
