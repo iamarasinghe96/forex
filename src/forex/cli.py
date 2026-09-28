@@ -9,8 +9,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from forex.broker.mt5 import MT5Broker
 from forex.analysis import InsufficientDataError, analyse_market
+from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
 from forex.domain import Timeframe
 from forex.errors import OperatorError

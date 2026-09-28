@@ -27,7 +27,6 @@ from forex.analysis import (
 from forex.config import AnalysisConfig
 from forex.domain import Candle, Timeframe
 
-
 START = datetime(2025, 1, 1, tzinfo=UTC)
 
 
@@ -66,7 +65,7 @@ def test_closed_candles_validates_series_and_utc() -> None:
     series = candles(Timeframe.H1, [1.0])
     assert closed_candles(series, START + timedelta(minutes=59)) == []
     with pytest.raises(ValueError, match="UTC"):
-        closed_candles(series, datetime(2025, 1, 1))
+        closed_candles(series, datetime(2025, 1, 1, tzinfo=UTC).replace(tzinfo=None))
 
 
 def test_indicator_formulas() -> None:

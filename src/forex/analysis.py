@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from statistics import fmean, pstdev
 from types import MappingProxyType
-from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from forex.config import AnalysisConfig

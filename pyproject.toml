@@ -7,7 +7,13 @@ name = "forex-operator"
 version = "0.1.0"
 description = "Local-first automated Forex trading system"
 requires-python = ">=3.12,<3.15"
-dependencies = ["PyYAML>=6.0.2,<7", "pydantic>=2.9,<3", "pydantic-settings>=2.5,<3", "httpx>=0.27,<1"]
+dependencies = [
+    "PyYAML>=6.0.2,<7",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "httpx>=0.27,<1",
+    "tzdata>=2025.2",
+]
 
 [project.optional-dependencies]
 mt5 = ["MetaTrader5>=5.0.45; platform_system == 'Windows'"]
@@ -22,6 +28,7 @@ packages = ["src/forex"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
