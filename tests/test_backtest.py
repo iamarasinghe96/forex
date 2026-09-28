@@ -117,6 +117,19 @@ def candidate(side: Side = Side.LONG, evaluation: datetime = START) -> TradeCand
     )
 
 
+def test_prepared_replay_matches_reference_metrics_and_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h1 = series(1000, Timeframe.H1)
+    h4 = series(260, Timeframe.H4, offset_hours=2)
+    arguments = ("EURUSD", h1, h4, AnalysisConfig(), BacktestConfig(), POLICY)
+    cutoff = START + timedelta(hours=950)
+    prepared = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    monkeypatch.setattr("forex.backtest.prepare_candles", lambda candles, config: candles)
+    reference = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    assert prepared == reference
+
+
 def test_replay_is_sequential_excludes_forming_bars_and_uses_real_h4_alignment() -> None:
     h1 = series(1000, Timeframe.H1)
     # IC Markets normalized H4 timestamps may be 21:00/22:00 based; never modulo-four UTC.
