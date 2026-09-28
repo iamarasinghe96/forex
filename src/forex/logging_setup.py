@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 
 from forex.config import AppConfig
@@ -13,7 +13,7 @@ from forex.config import AppConfig
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "mode": getattr(record, "mode", "UNKNOWN"),
             "level": record.levelname, "logger": record.name, "message": record.getMessage(),
         }, ensure_ascii=False)
@@ -25,7 +25,7 @@ class ModeFilter(logging.Filter):
         self.mode = mode.upper()
 
     def filter(self, record: logging.LogRecord) -> bool:
-        setattr(record, "mode", self.mode)
+        record.mode = self.mode
         return True
 
 

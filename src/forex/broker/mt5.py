@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import ModuleType
 from typing import Any
@@ -122,7 +122,7 @@ class MT5Broker(Broker):
                 f"No live tick is available for {broker_symbol}. Confirm Market Watch shows live prices "
                 "and the market is open, then retry."
             )
-        timestamp = datetime.fromtimestamp(float(raw.time_msc) / 1000, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(float(raw.time_msc) / 1000, tz=UTC)
         return Tick(broker_symbol, _decimal(raw.bid), _decimal(raw.ask), timestamp)
 
     def pip_value_per_lot(self, spec: SymbolSpec, account_currency: str) -> Decimal:

@@ -15,8 +15,13 @@ from forex.errors import OperatorError
 class Secrets(BaseSettings):
     """Secrets read from `.env`; their values are never included in representations."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="FOREX_", extra="ignore")
-    mt5_password: str = Field(min_length=1, repr=False)
+    model_config = SettingsConfigDict(
+    env_file=".env",
+    env_prefix="FOREX_",
+    extra="ignore",
+    validate_default=True,
+)
+    mt5_password: str = Field(default="", min_length=1, repr=False)
     telegram_bot_token: str = Field(default="", repr=False)
     telegram_chat_id: str = Field(default="", repr=False)
 
@@ -67,7 +72,7 @@ class AppConfig(BaseModel):
     risk: RiskConfig
 
     @model_validator(mode="after")
-    def live_requires_deliberate_config(self) -> "AppConfig":
+    def live_requires_deliberate_config(self) -> AppConfig:
         if self.mode == "live" and "Demo" in self.broker.server:
             raise ValueError("live mode cannot be paired with a demo server")
         return self
