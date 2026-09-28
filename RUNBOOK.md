@@ -1,6 +1,6 @@
 # Operator runbook
 
-> Current delivery: Layer 3 read-only analysis. The software cannot trade. Instructions for unattended trading,
+> Current delivery: Layer 4 read-only historical research. The software cannot trade. Instructions for unattended trading,
 > remote flattening, backups, service recovery, and updates will be completed in their owning layers.
 
 ## First-time setup and verification
@@ -11,13 +11,13 @@ three instruments and prints their pip value per standard lot in AUD. Copy the o
 
 ## Daily operation
 
-There is no trading operation in Layer 2. Run `forex verify-foundation` after an MT5 account or
+There is no trading operation in Layers 1–4. Run `forex verify-foundation` after an MT5 account or
 broker-server change. Every console and file-log record begins with `PAPER` or `LIVE`; the supplied
 configuration is `PAPER`. Run `forex verify-market-data` to refresh the idempotent SQLite history.
 
 ## Stop immediately
 
-Layer 2 sends no orders, so closing the PowerShell window stops it. When execution is delivered,
+Layers 1–4 send no orders, so closing the PowerShell window stops them. When execution is delivered,
 emergency controls will be the authenticated phone kill switch plus the broker's MT5 mobile app.
 The broker app is the independent fallback if the VPS itself is unreachable.
 
@@ -83,3 +83,52 @@ Recent losses cannot directly veto a trade, reduce every score, disable a setup,
 Any behavior change must pass versioned historical, walk-forward, out-of-sample and shadow/paper
 validation before promotion. It must detect over-conservatism and under-trading by studying rejected
 opportunities, not optimize merely for fewer losses. No learning engine is implemented in Layer 3.
+# Layer 4 historical research runbook
+
+Layer 4 is offline and read-only. First populate SQLite on the Windows VPS with
+`forex verify-market-data`; replay itself does not connect to MT5 and imports no order API.
+
+## Windows PowerShell verification
+
+```powershell
+git rev-parse HEAD
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[mt5,dev]"
+.\.venv\Scripts\forex.exe verify-foundation
+.\.venv\Scripts\forex.exe verify-market-data
+.\.venv\Scripts\forex.exe verify-analysis
+.\.venv\Scripts\forex.exe verify-backtest
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m mypy src
+Get-Content .\reports\backtest\strategy-baseline.json
+.\.venv\Scripts\forex.exe validate-backtest
+```
+
+The final command is expected to return exit code 3 on the current approximately 0.74-year dataset and
+print `INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION`. `verify-backtest` should return zero if replay
+and reporting work. Do not interpret this shorter engine verification as strategy/OOS/cost validation.
+
+## Outputs and interpretation
+
+`reports/backtest/strategy-baseline.json` contains coverage gates, strategy/parameter versions,
+evaluation/candidate/trade counts, gross and known-cost metrics, breakdowns, rejection counts, Monte
+Carlo summaries, assumptions, and warnings. Console output is the concise operator view. Re-running
+with unchanged database/config produces identical analytical values; the report's timestamp is derived
+from stored evaluation time, not wall-clock time.
+
+When history is missing, run `verify-market-data` with MT5 connected, increase **Max bars in chart** if
+appropriate, load the required H1/H4 charts, and rerun. Never pad, duplicate, interpolate, scrape, or
+buy data as part of this workflow. If history remains below five years, preserve the report and wait
+for a verified broker-neutral `Candle` source. Formal validation remains refused.
+
+Parameter experiments must be bounded code/config inputs with a stable research identity. They do not
+rewrite `config.yaml`. Walk-forward research uses research data for train windows, later test folds as
+OOS observations, and excludes the final holdout. Do not repeatedly inspect that holdout. Compare
+expectancy, drawdown, frequency, pair/regime stability, adjacent values, and cost sensitivity rather
+than selecting highest profit or win rate. No automatic promotion exists.
+
+OHLC ambiguity defaults to adverse stop-first. Next-bar open is the entry assumption. Breakeven and
+trailing changes activate only after a bar. Commission, slippage, swap, and other fees are unavailable;
+spread needs captured point metadata and remains only a candle-level approximation. Consequently gross
+and net-known-cost metrics are research measurements, not realistic-complete-cost profitability.

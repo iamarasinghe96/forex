@@ -1,8 +1,14 @@
-# Forex Operator — Layer 3 Analysis / Strategy
+# Forex Operator — Layer 4 Historical Research
 
 Layers 1–2 provide the verified read-only broker and market-data foundation. Layer 3 adds pure,
 deterministic analysis and candidate generation; it still contains no risk sizing or order execution
 and makes no claim of a validated trading edge.
+
+Layer 4 adds broker-neutral historical replay, research-only next-bar trade simulation, normalized
+performance measurement, bounded parameter experiments, chronological walk-forward folds, an
+untouched final-holdout boundary, deterministic Monte Carlo outcome resampling, and a structured
+historical baseline. It calls the **same** pure `analyse_market` Layer 3 entry point used by current
+analysis and future runtime callers. It neither implements production risk/execution nor sends orders.
 
 ## Windows demo setup and verification
 
@@ -64,3 +70,48 @@ and does not veto a candidate. No news, sentiment, probabilities, scenarios, or 
 Expected output includes evaluation UTC, latest closed H1/H4 timestamps, regime, directional and
 volatility measurements, setup/style, evidence, candidate/direction, macro availability, and strategy
 and parameter versions, ending with `Layer 3 analysis verification passed... no order was sent.`
+
+## Layer 4 backtest verification
+
+```powershell
+.\.venv\Scripts\forex.exe verify-backtest
+.\.venv\Scripts\forex.exe validate-backtest
+```
+
+`verify-backtest` is an engine-verification command: it reads SQLite only, evaluates every H1 close
+after warm-up, reports candidate and simulated-trade frequency, and writes deterministic research
+content to `reports/backtest/strategy-baseline.json`. It requires neither MT5 nor `.env`, an LLM, a
+news feed, or fabricated macro data. `validate-backtest` runs the same replay but exits with code 3
+unless every pair has at least five years in both H1 and H4. The expected current VPS depth of about
+0.74 years therefore produces **INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION** while still allowing
+engine checks and metrics. This is not a failed engine check and never becomes a validation claim.
+
+At each event, evaluation time is the actual H1 timestamp plus one hour. Layer 3 independently filters
+H1 and H4 to candles whose actual timestamp plus duration is closed, so forming candles and future H4
+states cannot leak in. No UTC modulo rule is used for H4. Forward paths are attached only after the
+immutable decision snapshot and are clearly labelled outcomes; no-trade snapshots and their exact
+rejection reason are retained rather than being discarded or called fabricated “missed trades.”
+
+Research fills use the next available H1 open. Stops derive from the candidate's existing structural
+reference; targets begin at the explicitly configured 1.5R. Breakeven and ATR-trailing changes become
+active only after a complete bar, because OHLC cannot establish intrabar ordering. If stop and target
+are both touched, primary reporting uses deterministic adverse/stop-first treatment. The alternative
+`ambiguous` policy still records an unresolved ambiguity at the stop value; it never awards the target.
+All horizons and exit settings are explicit, configurable, and **UNVALIDATED**.
+
+The `CostModel` separates observed candle spread, commission, slippage, and other costs. Spread points
+are convertible only with explicitly captured runtime instrument metadata and remain marked
+UNVALIDATED because a bar field is not a tick-at-fill quote. Commission, slippage, swap, and fees are
+never guessed. Reports separate gross and net-known-cost results and declare an incomplete model.
+
+Metrics include counts/frequency, win/loss rates, average wins/losses, expectancy, profit factor,
+payoff, cumulative R, drawdown, streaks, MAE/MFE, holding time, and direction/pair/setup/regime/session/
+DAY-or-SWING breakdowns. The desired 3–8 weekly trades is calibration context, not a veto or proof.
+Stable `research-<hash>` experiment versions vary validated `AnalysisConfig` copies without editing
+`config.yaml` or promoting `unvalidated-v1`. Walk-forward selection sees each training window only,
+then measures the selected version on its subsequent test; folds stop before the reserved final
+holdout. IID bootstrap Monte Carlo uses a recorded seed and measures outcome-distribution uncertainty,
+not synthetic prices or account-specific ruin; serial/regime-dependence limitations are reported.
+
+The baseline is intended for a future learning layer to compare candidate *and rejection* behaviour,
+not to implement “three losses means block trades,” mutate strategy parameters, or veto candidates.

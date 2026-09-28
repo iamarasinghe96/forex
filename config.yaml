@@ -53,6 +53,23 @@ analysis:
   extreme_zscore: 1.0
   swing_trend_threshold: 0.68
 
+# Layer 4 research-only assumptions. They never alter strategy parameters or place orders.
+backtest:
+  forward_horizons_bars: [6, 24, 120]  # Explicit and UNVALIDATED.
+  simulation_horizon_bars: 120         # Explicit and UNVALIDATED.
+  reward_risk: 1.5                     # Research exit assumption, not Layer 5 risk sizing.
+  breakeven_at_r: 1.0
+  atr_trailing_multiple: null
+  ambiguity_policy: adverse
+  minimum_history_years: 5.0
+  monte_carlo_iterations: 1000
+  monte_carlo_seed: 26092801
+  train_days: 730
+  test_days: 180
+  step_days: 180
+  final_holdout_days: 365
+  report_directory: reports/backtest
+
 telegram:
   enabled: false
   timeout_seconds: 10

@@ -10,6 +10,14 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from forex.analysis import InsufficientDataError, analyse_market
+from forex.backtest import (
+    StrategyBaseline,
+    build_walk_forward_folds,
+    history_gate,
+    monte_carlo,
+    run_backtest,
+    write_json_report,
+)
 from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
 from forex.domain import Timeframe
@@ -151,10 +159,90 @@ def verify_analysis(config_path: Path) -> int:
     return 0
 
 
+def verify_backtest(config_path: Path, *, formal: bool = False) -> int:
+    """Replay SQLite history without MT5, secrets, parameter mutation, or execution APIs."""
+    config = load_config(config_path)
+    configure_logging(config)
+    log = logging.getLogger("forex.backtest")
+    store = CandleStore(config.database.path)
+    gates = {}
+    metrics = {}
+    simulations = {}
+    protocols = {}
+    latest_closed = []
+    for symbol in config.broker.symbols:
+        h1 = store.load(symbol, Timeframe.H1)
+        h4 = store.load(symbol, Timeframe.H4)
+        if not h1 or not h4:
+            raise OperatorError(
+                f"Stored H1/H4 history for {symbol} is missing. Run `forex verify-market-data` "
+                "on the VPS, then retry; Layer 4 never downloads or fabricates candles."
+            )
+        gate = history_gate(h1, h4, config.backtest.minimum_history_years)
+        gates[symbol] = gate
+        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest)
+        metrics[symbol] = result.metrics
+        simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
+                                           config.backtest.monte_carlo_seed)
+                               if result.trades else None)
+        if gate.earliest_utc is None or gate.latest_utc is None:
+            raise OperatorError(f"Unable to determine stored history coverage for {symbol}.")
+        protocols[symbol] = build_walk_forward_folds(
+            gate.earliest_utc, gate.latest_utc, config.backtest
+        )
+        latest_closed.append(result.evaluations[-1].snapshot.evaluation_time_utc
+                             if result.evaluations else h1[-1].timestamp_utc)
+        log.info(
+            "%s H1=%s H4=%s history_years=%.2f status=%s evaluations=%s candidates=%s "
+            "trades=%s candidates/week=%.2f trades/week=%.2f gross_expectancy_R=%s "
+            "net_known_expectancy_R=%s",
+            symbol, len(h1), len(h4), gate.available_years, gate.status,
+            result.metrics.evaluation_count, result.metrics.candidate_count,
+            result.metrics.trade_count, result.metrics.candidate_frequency_per_week,
+            result.metrics.trades_per_week, result.metrics.gross.expectancy_r,
+            result.metrics.net_known_cost.expectancy_r,
+        )
+    eligible = all(gate.sufficient for gate in gates.values())
+    status = "FORMAL_VALIDATION_ELIGIBLE_NOT_AUTOMATICALLY_VALIDATED" if eligible else \
+        "INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION"
+    warnings = (
+        "Commission, slippage, swap and other broker fees are unavailable; net-known-cost results are incomplete.",
+        "Candle spread points require captured instrument point metadata and are not tick execution spreads.",
+        "All Layer 3 and Layer 4 parameters remain UNVALIDATED; no parameter was promoted.",
+    )
+    assumptions = {
+        "entry": "next available H1 open",
+        "ambiguity_policy": config.backtest.ambiguity_policy,
+        "reward_risk": config.backtest.reward_risk,
+        "breakeven_at_r": config.backtest.breakeven_at_r,
+        "atr_trailing_multiple": config.backtest.atr_trailing_multiple,
+        "forward_horizons_bars": tuple(config.backtest.forward_horizons_bars),
+        "simulation_horizon_bars": config.backtest.simulation_horizon_bars,
+        "trade_frequency_target": "3-8/week calibration only; never a veto",
+    }
+    baseline = StrategyBaseline(max(latest_closed), status, gates, metrics, simulations, False,
+                                protocols, assumptions, warnings)
+    report_path = config.backtest.report_directory / "strategy-baseline.json"
+    write_json_report(report_path, baseline)
+    for warning in warnings:
+        log.warning("%s", warning)
+    log.warning("%s", status)
+    log.info("Layer 4 report written to %s. Stored data only; no order was sent.", report_path)
+    if formal and not eligible:
+        log.error("Formal validation refused: %s", status)
+        return 3
+    return 0
+
+
+def full_validation(config_path: Path) -> int:
+    return verify_backtest(config_path, formal=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
-        "command", choices=["verify-foundation", "verify-market-data", "verify-analysis"]
+        "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
+                            "verify-backtest", "validate-backtest"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     args = parser.parse_args()
@@ -163,6 +251,8 @@ def main() -> None:
             "verify-foundation": verify,
             "verify-market-data": verify_market_data,
             "verify-analysis": verify_analysis,
+            "verify-backtest": verify_backtest,
+            "validate-backtest": full_validation,
         }
         command = commands[args.command]
         raise SystemExit(command(args.config))
