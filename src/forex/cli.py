@@ -25,9 +25,9 @@ from forex.broker.mt5 import MT5Broker
 from forex.config import Secrets, load_config
 from forex.domain import Timeframe
 from forex.errors import OperatorError
+from forex.history import import_csv, validate_research_database, verify_database
 from forex.logging_setup import configure_logging
 from forex.market_data import download_history, validate_candle_freshness, validate_tick_freshness
-from forex.history import import_csv, validate_research_database, verify_database
 from forex.persistence import CandleStore, initialise_database
 from forex.risk import DailyRiskState, PortfolioRiskState, decide_risk
 from forex.risk_policy import policy_from_config

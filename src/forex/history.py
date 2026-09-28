@@ -8,6 +8,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
@@ -182,7 +183,7 @@ def import_csv(
         if volume_semantics != "unavailable" and "volume" not in fields:
             raise ValueError("observed volume semantics require a volume column")
         for number, row in enumerate(rows, 2):
-            timestamp = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+            timestamp = datetime.fromisoformat(row["timestamp"])
             if timestamp.tzinfo is None or timestamp.utcoffset() != timedelta(0):
                 raise ValueError(f"row {number} timestamp must be timezone-aware UTC")
             timestamp = timestamp.astimezone(UTC)
@@ -201,7 +202,7 @@ def import_csv(
         raise OperatorError(f"Invalid historical CSV {path}: {exc}; nothing was imported.") from exc
     if not candles:
         raise OperatorError(f"Historical CSV {path} contains no data rows.")
-    if any(b.timestamp_utc <= a.timestamp_utc for a, b in zip(candles, candles[1:])):
+    if any(b.timestamp_utc <= a.timestamp_utc for a, b in pairwise(candles)):
         raise OperatorError("Historical CSV timestamps must be strictly increasing.")
     h4 = aggregate_h4(candles, h4_alignment_hour_utc)
     if not h4:

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import sqlite3
 import json
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from forex.backtest import history_gate
+from forex.cli import verify_backtest
 from forex.config import AnalysisConfig
 from forex.domain import Candle, Timeframe
 from forex.errors import OperatorError
-from forex.history import aggregate_h4, import_csv
-from forex.history import validate_research_database
+from forex.history import aggregate_h4, import_csv, validate_research_database
 from forex.persistence import CandleStore
-from forex.cli import verify_backtest
 
 
 def candle(hour: int, *, day: int = 1) -> Candle:
@@ -39,10 +38,10 @@ def test_h4_aggregation_is_deterministic_and_explicitly_aligned() -> None:
 def test_import_preserves_provenance_and_is_idempotent(tmp_path: Path) -> None:
     source, database = tmp_path / "data.csv", tmp_path / "research.sqlite3"
     write_csv(source, [f"2020-01-01T{hour:02}:00:00Z,1,2,0.5,1.5,10" for hour in range(8)])
-    kwargs = dict(dataset="vendor-release", provider="verified-vendor", symbol="EURUSD",
-                  source_timezone="UTC", price_type="midpoint", spread_available=False,
-                  volume_semantics="tick count", h4_alignment_hour_utc=0,
-                  imported_at=datetime(2026, 1, 1, tzinfo=UTC))
+    kwargs = {"dataset": "vendor-release", "provider": "verified-vendor", "symbol": "EURUSD",
+              "source_timezone": "UTC", "price_type": "midpoint", "spread_available": False,
+              "volume_semantics": "tick count", "h4_alignment_hour_utc": 0,
+              "imported_at": datetime(2026, 1, 1, tzinfo=UTC)}
     first = import_csv(source, database, **kwargs)
     second = import_csv(source, database, **kwargs)
     assert first == second
@@ -53,9 +52,10 @@ def test_import_preserves_provenance_and_is_idempotent(tmp_path: Path) -> None:
 
 
 def test_import_rejects_naive_duplicate_invalid_ohlc_and_conflicting_overlap(tmp_path: Path) -> None:
-    base = dict(database=tmp_path / "r.sqlite3", dataset="d", provider="p", symbol="EURUSD",
-                source_timezone="UTC", price_type="bid", spread_available=False,
-                volume_semantics="unavailable", h4_alignment_hour_utc=0)
+    base = {"database": tmp_path / "r.sqlite3", "dataset": "d", "provider": "p",
+            "symbol": "EURUSD", "source_timezone": "UTC", "price_type": "bid",
+            "spread_available": False, "volume_semantics": "unavailable",
+            "h4_alignment_hour_utc": 0}
     for name, rows in (
         ("naive", [f"2020-01-01T0{i}:00:00,1,2,.5,1.5,0" for i in range(4)]),
         ("duplicate", ["2020-01-01T00:00:00Z,1,2,.5,1.5,0"] * 4),
@@ -105,9 +105,9 @@ def test_atomic_failure_rolls_back_candles_and_provenance(
 def test_reimport_returns_original_timestamp_and_rejects_changed_metadata(tmp_path: Path) -> None:
     source, database = tmp_path / "data.csv", tmp_path / "research.sqlite3"
     write_csv(source, [f"2020-01-01T0{i}:00:00Z,1,2,.5,1.5,0" for i in range(4)])
-    kwargs = dict(dataset="d", provider="p", symbol="EURUSD", source_timezone="UTC",
-                  price_type="bid", spread_available=False, volume_semantics="unavailable",
-                  h4_alignment_hour_utc=0)
+    kwargs = {"dataset": "d", "provider": "p", "symbol": "EURUSD", "source_timezone": "UTC",
+              "price_type": "bid", "spread_available": False,
+              "volume_semantics": "unavailable", "h4_alignment_hour_utc": 0}
     original = import_csv(source, database, imported_at=datetime(2025, 1, 1, tzinfo=UTC), **kwargs)
     repeated = import_csv(source, database, imported_at=datetime(2026, 1, 1, tzinfo=UTC), **kwargs)
     assert repeated == original
@@ -128,10 +128,11 @@ def test_database_rejects_incompatible_non_overlapping_feed(
     write_csv(first, [f"2020-01-01T0{i}:00:00Z,1,2,.5,1.5,0" for i in range(4)])
     hours = range(1, 5) if "h4_alignment_hour_utc" in changed else range(4)
     write_csv(second, [f"2021-01-01T{i:02}:00:00Z,1,2,.5,1.5,0" for i in hours])
-    kwargs: dict[str, object] = dict(dataset="d", provider="p", symbol="EURUSD",
-                                     source_timezone="UTC", price_type="bid",
-                                     spread_available=False, volume_semantics="unavailable",
-                                     h4_alignment_hour_utc=0)
+    kwargs: dict[str, object] = {
+        "dataset": "d", "provider": "p", "symbol": "EURUSD", "source_timezone": "UTC",
+        "price_type": "bid", "spread_available": False, "volume_semantics": "unavailable",
+        "h4_alignment_hour_utc": 0,
+    }
     import_csv(first, database, **kwargs)  # type: ignore[arg-type]
     with pytest.raises(OperatorError, match="Incompatible research dataset"):
         import_csv(second, database, **(kwargs | changed))  # type: ignore[arg-type]
