@@ -35,3 +35,6 @@ Layer 8 follow-up:
 - [ ] Run security-rule emulator tests and confirm unauthorized reads and all browser writes fail.
 - [ ] Exercise outage/reconnect and local/cloud divergence recovery with the actual project.
 - [ ] Review reserve-ledger treatment and export with the operator's accountant; no tax classification is asserted.
+
+## Layer 9 dashboard
+Configure Firebase web app (public identifiers only), Google sign-in, authorized Pages domain and access/operator UID. Deploy and verify the deny-by-default Firestore rules using operator and unauthorized accounts before enabling Pages. Follow dashboard/README.md. Dashboard has no trading controls. Cloud authentication and deployed-rule checks remain NOT_RUN.
