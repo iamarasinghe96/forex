@@ -121,6 +121,11 @@ class MT5Broker(Broker):
             freeze_level_points=int(info.trade_freeze_level), filling_mode=int(info.filling_mode),
         )
 
+    def market_allows_entries(self, broker_symbol: str) -> bool:
+        info = self.api.symbol_info(broker_symbol)
+        return bool(info is not None and getattr(info, "trade_mode", None) ==
+                    getattr(self.api, "SYMBOL_TRADE_MODE_FULL", 4))
+
     def tick(self, broker_symbol: str) -> Tick:
         raw = self.api.symbol_info_tick(broker_symbol)
         if raw is None:

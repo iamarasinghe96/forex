@@ -89,12 +89,24 @@ class PaperBroker:
             unrealized += self._pnl(p, tick.bid if p.side is Side.LONG else tick.ask)
         return replace(self.account, balance=balance, equity=balance + unrealized)
 
+    def position_status(self, now: datetime) -> tuple[dict[str, Any], ...]:
+        result = []
+        for position in self.positions():
+            tick = self._quote(position.symbol, now)
+            price = tick.bid if position.side is Side.LONG else tick.ask
+            result.append({**json.loads(canonical_json(position)), "market_price": str(price),
+                           "unrealized_pnl_aud": str(self._pnl(position, price)),
+                           "pnl_basis": "simulated_incomplete_costs"})
+        return tuple(result)
+
     def snapshot(self, symbol: str, now: datetime) -> ExecutionSnapshot:
         spec = self.feed.resolve_symbol(symbol)
         return ExecutionSnapshot(self.state(now), spec, self._quote(spec.broker_name, now),
-                                 self.positions(), True, True, now)
+                                 self.positions(), True, self.feed.market_allows_entries(spec.broker_name), now)
 
     def submit(self, intent: OrderIntent) -> SubmissionResult:
+        if not self.feed.market_allows_entries(intent.symbol):
+            return SubmissionResult("REJECTED", None, "PAPER_MARKET_ENTRY_PERMISSION_BLOCKED")
         tick = self._quote(intent.symbol, intent.created_at_utc)
         price = tick.ask if intent.side is Side.LONG else tick.bid
         if price != intent.entry:
@@ -118,6 +130,8 @@ class PaperBroker:
 
     def close(self, position: BrokerPosition, price: Decimal, now: datetime, reason: str) -> None:
         pnl = self._pnl(position, price)
+        spec = self.feed.resolve_symbol(position.symbol)
+        pips = (price - position.entry) / spec.pip_size * (1 if position.side is Side.LONG else -1)
         with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT opened_at,closed_at FROM paper_positions WHERE client_id=?",
@@ -129,6 +143,7 @@ class PaperBroker:
             payload = {"position": position, "symbol": position.symbol, "entry": position.entry,
                        "exit": price, "volume": position.volume, "opened_at_utc": row[0],
                        "closed_at_utc": now, "pnl_aud": pnl, "balance": balance,
+                       "pips": pips, "direction": position.side,
                        "reserve_percent": self.reserve, "reason": reason,
                        "pnl_basis": "simulated_incomplete_costs", "costs_complete": False,
                        "limitations": "Observed quotes only; tick-value approximation; commission, swap, slippage and missed intra-poll paths unavailable."}

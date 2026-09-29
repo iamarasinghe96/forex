@@ -59,3 +59,5 @@ Actual multi-day live-data soak remains NOT_RUN. Record start/end UTC, code/conf
 actual uptime, heartbeats, disconnect/stale-data incidents, restarts, missing data, provider
 and cloud outages and operator actions. Offline fast-forward tests are not elapsed soak.
 Review evidence before configuring demo execution or claiming operational readiness.
+
+Use forex paper-soak-report --start-utc <UTC> --end-utc <UTC> to summarize actual persisted heartbeat evidence. It exposes gaps, clock reversals, configuration/code fingerprints and incident IDs. It excludes unobserved time and never declares operational incidents resolved or strategy validated. Market-entry permissions are checked even in PAPER; close-only/disabled/restricted symbols block new simulated entries while exits remain available.

@@ -21,6 +21,7 @@ from forex.runtime import RuntimeStore, read_heartbeat
 def setup(tmp_path: Path) -> tuple[PaperBroker, Mock]:
     feed = Mock(spec=Broker)
     feed.account_state.return_value = account()
+    feed.market_allows_entries.return_value = True
     feed.resolve_symbol.return_value = spec()
     feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), NOW)
     return PaperBroker(tmp_path / "paper.sqlite3", feed, account(), Decimal(10000), 30, Decimal("32.5")), feed
@@ -39,6 +40,7 @@ def test_paper_fill_restart_and_duplicate_never_call_real_order_api(tmp_path: Pa
     assert len(restarted.positions()) == 1
     assert restarted.state(NOW).balance == Decimal(10000)
     assert restarted.state(NOW).equity < Decimal(10000)  # Actual observed bid/ask spread.
+    assert Decimal(restarted.position_status(NOW)[0]["unrealized_pnl_aud"]) < 0
     feed.place_order.assert_not_called()
     feed.modify_position.assert_not_called()
     feed.close_position.assert_not_called()
@@ -56,6 +58,8 @@ def test_exit_and_reserve_survive_crash_before_journaling(tmp_path: Path) -> Non
     assert journal.summary("PAPER")["closed_trades"] == 1
     assert Decimal(journal.summary("PAPER")["realized_pnl_aud"]) == Decimal(200)
     assert Decimal(journal.summary("PAPER")["reserve_aud"]) == Decimal(65)
+    closed = next(e for e in journal.events() if e.kind == "trade_closed")
+    assert Decimal(closed.payload["pips"]) == Decimal(200)
     assert paper.evidence(NOW, NOW)[0].kind == "DEAL"
 
 
@@ -91,6 +95,17 @@ def test_account_mismatch_and_changed_quote_are_rejected(tmp_path: Path) -> None
     assert paper.submit(replace(intent(), entry=Decimal("1.2"))).status == "REJECTED"
     with pytest.raises(OperatorError, match="another account"):
         PaperBroker(paper.path, feed, replace(account(), login=2), Decimal(1000), 30, Decimal(0))
+
+
+def test_close_only_market_blocks_paper_entries_but_allows_simulated_exit(tmp_path: Path) -> None:
+    paper, feed = setup(tmp_path)
+    paper.submit(intent())
+    feed.market_allows_entries.return_value = False
+    assert paper.snapshot("EURUSD", NOW).entries_allowed is False
+    assert paper.submit(replace(intent(), client_id="second")).status == "REJECTED"
+    paper.manage(NOW, flatten=True)
+    assert not paper.positions()
+    feed.place_order.assert_not_called()
 
 
 def test_process_lock_releases_and_backup_is_consistent(tmp_path: Path) -> None:

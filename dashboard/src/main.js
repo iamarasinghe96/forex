@@ -18,7 +18,11 @@ function render(){
   const health=summary.latest_health;
   card($('cards'),'Bot',stale(summary.health_at_utc)?'Unknown / stale':health?.status??'Unavailable');card($('cards'),'MT5',stale(summary.health_at_utc)?'Unknown / stale':health?.connection??'Unavailable');
   $('freshness').textContent=stale(summary.health_at_utc)?'No recent heartbeat — do not assume the bot is running.':`Heartbeat ${summary.health_at_utc}`;
-  $('positions').textContent=health?.positions ? JSON.stringify(health.positions,null,2) : 'No current position snapshot available.';
+  $('positions').replaceChildren();$('positions').className='cards';
+  if(Array.isArray(health?.positions)){
+    if(!health.positions.length)$('positions').textContent='No open positions in the latest snapshot.';
+    for(const position of health.positions){const box=document.createElement('div');box.className='card';const title=document.createElement('strong'),value=document.createElement('p'),levels=document.createElement('p');title.textContent=`${position.symbol} · ${position.side}`;value.textContent=`${position.volume} lots · unrealized ${money(position.unrealized_pnl_aud)}`;levels.textContent=`Entry ${position.entry} · stop ${position.stop} · target ${position.target}. ${stale(summary.health_at_utc)?'Snapshot stale. ':''}Simulated costs incomplete.`;box.append(title,value,levels);$('positions').append(box);}
+  }else $('positions').textContent='No current position snapshot available.';
   $('totals').replaceChildren();card($('totals'),'All-time recorded P&L',money(summary.realized_pnl_aud));card($('totals'),'All-time reserve',money(summary.reserve_aud));card($('totals'),'Cost evidence',summary.costs_complete?'Recorded as complete':'Incomplete / unavailable');
   $('scope').textContent=`${selected.length} matching records out of ${events.length} loaded. ${exhausted?'End of available history reached.':'Older records may be missing; load more for a wider view.'} Filtered metrics and exports cover this subset. Currency metrics reflect recorded P&L, not validated profitability.`;
   $('metrics').replaceChildren();for(const [label,value] of [['Closed trades',String(p.count)],['Recorded P&L',money(p.pnl)],['Win rate',p.winRate===null?'Unavailable':number(p.winRate)+'%'],['Profit factor',number(p.profitFactor)],['Average win',money(p.averageWin)],['Average loss',money(p.averageLoss)],['Observed equity drawdown',p.drawdown===null?'Unavailable':number(p.drawdown)+'%'],['Outcome streak',p.streak===null?'Unavailable':String(p.streak)]])card($('metrics'),label,value);

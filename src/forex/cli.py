@@ -537,7 +537,7 @@ def main() -> None:
                             "verify-journal", "sync-journal", "run-paper", "verify-paper",
                             "verify-intelligence", "diagnose", "experiment-propose",
                             "experiment-attach", "experiment-status", "walk-forward-research",
-                            "reconcile-journal"]
+                            "reconcile-journal", "paper-soak-report"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -555,6 +555,20 @@ def main() -> None:
     parser.add_argument("--h4-alignment-hour-utc", type=int, default=0)
     args = parser.parse_args()
     try:
+        if args.command == "paper-soak-report":
+            from forex.journal import JournalStore
+            from forex.serialization import canonical_json
+            from forex.soak import summarize_soak
+
+            config = load_config(args.config)
+            try:
+                soak_report = summarize_soak(JournalStore(config.paper.database),
+                                        datetime.fromisoformat(args.start_utc),
+                                        datetime.fromisoformat(args.end_utc) if args.end_utc else datetime.now(UTC))
+                print(canonical_json(soak_report))
+            except ValueError:
+                raise OperatorError("Soak report requires an increasing timezone-aware UTC window.") from None
+            raise SystemExit(0)
         if args.command == "reconcile-journal":
             raise SystemExit(sync_journal(args.config, reconcile=True))
         if args.command == "walk-forward-research":

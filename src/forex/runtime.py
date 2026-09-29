@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sqlite3
@@ -69,6 +70,13 @@ class PaperRuntime:
                                           config.execution.maximum_decision_age_seconds)
         self.started = clock()
         self.next_analysis = self.started
+        self.entry_blocks: set[str] = set()
+        self.config_fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
+        source = hashlib.sha256()
+        for path in sorted(Path(__file__).parent.rglob("*.py")):
+            source.update(str(path.relative_to(Path(__file__).parent)).encode())
+            source.update(path.read_bytes())
+        self.code_fingerprint = source.hexdigest()
 
     def session_id(self, now: datetime) -> str:
         hour = self.config.execution.session_rollover_hour_utc
@@ -84,8 +92,12 @@ class PaperRuntime:
         if live_account.login != self.paper.account.login or live_account.currency != "AUD":
             raise OperatorError("Market-data account identity changed. Halt paper and inspect MT5.")
         # Check feed freshness even when flat or between hourly analysis passes.
-        for symbol in self.config.broker.symbols:
-            self.paper.snapshot(symbol, now)
+        blocked = {symbol for symbol in self.config.broker.symbols
+                   if not self.paper.snapshot(symbol, now).entries_allowed}
+        for symbol in blocked - self.entry_blocks:
+            self.emit("alert", "market:" + symbol + now.isoformat(),
+                      {"symbol": symbol, "reason": "Market entry permission blocked (close-only, disabled or restricted mode)"}, now)
+        self.entry_blocks = blocked
         self.execution.reconcile(datetime(2000, 1, 1, tzinfo=UTC), now)
         # Observe pre-exit equity first so a loss cannot disappear from the circuit
         # comparison when realizing it into a newly lower balance.
@@ -129,6 +141,10 @@ class PaperRuntime:
             payload.update(candidate=json_value(candidate), trade_style=candidate.trade_style.value)
             self.emit("candidate", identity, payload, now)
             snap = self.paper.snapshot(symbol, self.clock())
+            if not snap.entries_allowed:
+                self.emit("hard_risk_block", identity, {**payload, "reason": "Broker market entry permission blocked"}, self.clock())
+                self.store.complete(identity, self.clock())
+                continue
             entry = snap.tick.ask if candidate.side is Side.LONG else snap.tick.bid
             stop = Decimal(str(candidate.structural_reference_levels[
                 "rolling_low" if candidate.side is Side.LONG else "rolling_high"]))
@@ -186,8 +202,10 @@ class PaperRuntime:
         account = self.paper.state(now)
         identity = now.isoformat()
         self.emit("balance", identity, {"balance": account.balance, "equity": account.equity}, now)
-        payload = {"status": status, "connection": "MARKET_DATA_OBSERVED", "positions": json_value(self.paper.positions()),
-                   "started_at_utc": self.started, "observed_at_utc": now, "mode": "PAPER"}
+        payload = {"status": status, "connection": "MARKET_DATA_OBSERVED", "positions": json_value(self.paper.position_status(now)),
+                   "started_at_utc": self.started, "observed_at_utc": now, "mode": "PAPER",
+                   "config_fingerprint": self.config_fingerprint, "code_fingerprint": self.code_fingerprint}
+        payload["entry_blocked_symbols"] = sorted(self.entry_blocks)
         self.emit("health", identity, payload, now)
         path = self.config.paper.heartbeat_file
         path.parent.mkdir(parents=True, exist_ok=True)
