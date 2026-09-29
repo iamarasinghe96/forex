@@ -343,12 +343,37 @@ def verify_context(config_path: Path) -> int:
     return 0
 
 
+def verify_execution(config_path: Path) -> int:
+    """Exercise durable reservation in a disposable fixture, without a broker connection."""
+    from tempfile import TemporaryDirectory
+
+    from forex.analysis import Side
+    from forex.execution import ExecutionStore, OrderIntent
+
+    config = load_config(config_path)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with TemporaryDirectory(prefix="forex-execution-check-") as directory:
+        store = ExecutionStore(Path(directory) / "fixture.sqlite3")
+        intent = OrderIntent("fx-offline-fixture", "fixture", "fixture", 1, "FIXTURE", Side.LONG,
+                             Decimal(".01"), Decimal(1), Decimal(".9"), Decimal("1.2"), 1, now)
+        if not store.reserve(intent) or store.reserve(intent):
+            raise OperatorError("Execution reservation self-check failed. Do not enable execution.")
+        store.update(intent.client_id, "UNKNOWN", None, "fixture ambiguous submission", now)
+        reopened = ExecutionStore(store.path)
+        if reopened.unresolved() != (intent.client_id,):
+            raise OperatorError("Execution restart self-check failed. Do not enable execution.")
+    print(json.dumps({"layer": 7, "mode": config.mode.upper(),
+                      "status": "OFFLINE_RESERVATION_AND_RESTART_VERIFIED",
+                      "broker_execution": "NOT_RUN", "real_money_execution": "DISABLED"}))
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
-                            "import-history", "verify-history", "verify-context"]
+                            "import-history", "verify-history", "verify-context", "verify-execution"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -389,6 +414,7 @@ def main() -> None:
             "validate-backtest": full_validation,
             "verify-risk": verify_risk,
             "verify-context": verify_context,
+            "verify-execution": verify_execution,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",

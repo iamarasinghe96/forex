@@ -8,6 +8,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Callable, Mapping
+from contextlib import closing
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from decimal import ROUND_FLOOR, Decimal
@@ -159,7 +160,7 @@ class ContextStore:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.executescript("""
             CREATE TABLE IF NOT EXISTS context_cache (
                 input_hash TEXT PRIMARY KEY, response_json TEXT NOT NULL,
@@ -171,7 +172,7 @@ class ContextStore:
             """)
 
     def cached(self, key: str) -> tuple[str, str, str] | None:
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             row = db.execute("SELECT response_json, provider, model FROM context_cache "
                              "WHERE input_hash=?", (key,)).fetchone()
         return (str(row[0]), str(row[1]), str(row[2])) if row else None
@@ -179,7 +180,7 @@ class ContextStore:
     def record(self, key: str, provider: str, model: str, status: str, now: datetime,
                reply: ProviderReply | None, review: ReviewResponse | None = None) -> None:
         _require_utc(now, "now")
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("INSERT INTO context_calls VALUES (NULL,?,?,?,?,?,?,?,?)", (
                 key, provider, model, status, reply.input_tokens if reply else None,
                 reply.output_tokens if reply else None,
@@ -193,7 +194,7 @@ class ContextStore:
     def costs(self, start: datetime, end: datetime) -> Mapping[str, object]:
         _require_utc(start, "start")
         _require_utc(end, "end")
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             rows = db.execute("SELECT reported_cost_usd FROM context_calls "
                               "WHERE created_at_utc>=? AND created_at_utc<?",
                               (start.isoformat(), end.isoformat())).fetchall()
