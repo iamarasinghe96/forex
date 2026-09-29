@@ -20,12 +20,22 @@ class Mirror:
         self.fail = False
         self.remote: dict[str, str] = {}
         self.calls = 0
+        self.halt = False
+        self.summaries: dict[tuple[str, str], object] = {}
+
+    def paper_halt_requested(self) -> bool:
+        return self.halt
+
+    def summary_matches(self, mode: str, bucket: str, expected: object) -> bool:
+        return self.summaries.get((mode, bucket)) == expected
 
     def write(self, event: JournalEvent, summary: object, daily: object) -> None:
         self.calls += 1
         if self.fail:
             raise ConnectionError("simulated outage")
         self.remote[event.event_id] = event.payload_hash
+        self.summaries[(event.mode, "all")] = summary
+        self.summaries[(event.mode, event.observed_at_utc.date().isoformat())] = daily
 
     def fingerprint(self, mode: str, event_id: str) -> str | None:
         return self.remote.get(event_id)
@@ -113,3 +123,31 @@ def test_attribution_distinguishes_risk_observations_from_causality() -> None:
     assert all(set(item.evidence_ids) <= set(evidence) for item in labels)
     assert all(item.causal_confidence is None for item in labels)
     assert attribute({}) == ()
+
+
+def test_remote_halt_latches_locally_and_cannot_be_remotely_cleared(tmp_path: Path) -> None:
+    journal = JournalStore(tmp_path / "audit.sqlite3")
+    mirror = Mirror()
+    halt = tmp_path / "HALT"
+    worker = SyncWorker(journal, mirror, 5, 60, halt)
+    worker.sync_once(NOW)
+    assert not halt.exists()
+    mirror.halt = True
+    worker.sync_once(NOW)
+    assert halt.exists()
+    mirror.halt = False
+    worker.sync_once(NOW)
+    assert halt.exists()
+
+
+def test_reconciliation_repairs_aggregate_divergence_even_when_event_hash_matches(tmp_path: Path) -> None:
+    store = JournalStore(tmp_path / "audit.sqlite3")
+    event = store.append("PAPER", "no_trade", "one", {}, NOW)
+    mirror = Mirror()
+    worker = SyncWorker(store, mirror, 5, 60)
+    worker.sync_once(NOW)
+    mirror.summaries[("PAPER", "all")] = {"event_count": 999}
+    assert mirror.remote[event.event_id] == event.payload_hash
+    assert worker.reconcile_page(NOW) == (1, event.sequence)
+    worker.sync_once(NOW)
+    assert mirror.summaries[("PAPER", "all")] == store.summary("PAPER")

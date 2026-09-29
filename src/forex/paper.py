@@ -163,8 +163,23 @@ class PaperBroker:
         for identity, payload, opened, closed, close_payload, initial_stop in rows:
             # Opening evidence is immutable even after protective stops move.
             position: dict[str, Any] = json.loads(payload)
-            opening = {**position, "stop": initial_stop}
+            provenance = self._decision_provenance(identity)
+            opening = {**position, "stop": initial_stop, **provenance}
             journal.append("PAPER", "trade_opened", identity, opening, datetime.fromisoformat(opened))
             if closed:
-                journal.append("PAPER", "trade_closed", identity, json.loads(close_payload),
+                journal.append("PAPER", "trade_closed", identity, {**json.loads(close_payload), **provenance},
                                datetime.fromisoformat(closed))
+
+    def _decision_provenance(self, identity: str) -> dict[str, Any]:
+        with closing(sqlite3.connect(self.path)) as db, db:
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name='execution_intents'").fetchone():
+                return {"decision_provenance": "UNAVAILABLE_STANDALONE_SIMULATION"}
+            row = db.execute("SELECT payload_json FROM execution_intents WHERE client_id=?", (identity,)).fetchone()
+            if row is None:
+                return {"decision_provenance": "UNAVAILABLE_STANDALONE_SIMULATION"}
+            intent = json.loads(row[0])
+            records = db.execute("SELECT kind,payload_json FROM journal_events WHERE mode='PAPER' AND entity_id=? AND kind IN ('candidate','risk_decision','context_review') ORDER BY sequence",
+                                 (intent["candidate_id"],)).fetchall()
+        evidence = {kind: json.loads(value) for kind, value in records}
+        return {"decision_provenance": evidence, "intent": intent, "timeframe": "H1",
+                "trade_style": evidence.get("candidate", {}).get("trade_style")}

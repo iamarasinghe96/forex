@@ -11,9 +11,10 @@ Do not put credentials in this file, Git, a chat message, screenshots or logs.
 - [ ] MT5 demo: verify account/currency/leverage, current prices/specs, symbol suffixes, server clock,
       market permissions and hedging/netting behavior. Never use real-money production for verification.
 - [ ] Firebase: project, VPS-only Admin credentials, web configuration, operator Auth UID,
-      default-deny rules/indexes and emulator tests before deployment.
-- [ ] Phone alerts/emergency controls: Telegram token/chat or chosen authenticated server endpoint.
-- [ ] Hosting: GitHub Pages and any privileged Vercel endpoint need explicit project configuration.
+      default-deny rules/indexes and actual deployed authorization checks.
+- [ ] Phone alerts/emergency controls: Telegram token/chat; optional admin-console PAPER halt
+      requires explicit enabling and project IAM verification. Dashboard remains read-only.
+- [ ] Hosting: GitHub Pages needs explicit project configuration; no privileged Vercel endpoint is required by the implemented admin-console halt path.
 - [ ] Windows VPS: MT5 session, service account, startup/recovery, backups, clock and network checks.
 - [ ] Run actual unattended paper soak and collect elapsed-time/failure-recovery evidence.
 - [ ] Review Layer 11 candidate evidence and explicit version promotion; no automatic mutation.
@@ -30,9 +31,11 @@ Layer 7 follow-up:
 - [ ] Verify stop/close read-back before retrying any ambiguous management action.
 
 Layer 8 follow-up:
-- [ ] Install optional Firebase Admin SDK and configure the local credential-file environment variable.
+- [x] Install optional Firebase Admin SDK locally (VPS installation remains an operator step).
+- [ ] Configure the VPS-only credential-file environment variable.
 - [ ] Deploy reviewed rules/indexes; create Admin-only access/operator with the approved Auth UID.
-- [ ] Run security-rule emulator tests and confirm unauthorized reads and all browser writes fail.
+- [x] Local emulator tests confirm unauthorized reads and all browser writes fail.
+- [ ] Confirm these restrictions on the actual deployed project and IAM accounts.
 - [ ] Exercise outage/reconnect and local/cloud divergence recovery with the actual project.
 - [ ] Review reserve-ledger treatment and export with the operator's accountant; no tax classification is asserted.
 

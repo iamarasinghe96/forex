@@ -183,6 +183,7 @@ class ExecutionConfig(BaseModel):
 
 class CloudConfig(BaseModel):
     enabled: bool = False
+    emergency_halt_enabled: bool = False
     project_id: str = ""
     poll_seconds: float = Field(default=10, gt=0)
     batch_size: int = Field(default=50, ge=1, le=500)
@@ -193,6 +194,8 @@ class CloudConfig(BaseModel):
     def valid_cloud(self) -> CloudConfig:
         if self.enabled and not self.project_id.strip():
             raise ValueError("enabled cloud mirror requires a Firebase project ID")
+        if self.emergency_halt_enabled and not self.enabled:
+            raise ValueError("remote paper halt requires explicitly enabled cloud connection")
         if self.retry_base_seconds > self.retry_maximum_seconds:
             raise ValueError("cloud retry base cannot exceed maximum")
         return self

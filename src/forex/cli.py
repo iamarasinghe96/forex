@@ -398,16 +398,26 @@ def verify_journal(config_path: Path) -> int:
     return 0
 
 
-def sync_journal(config_path: Path) -> int:
+def sync_journal(config_path: Path, *, reconcile: bool = False) -> int:
     """Deliver one configured cloud batch; disabled configuration performs no network I/O."""
     from forex.cloud_sync import configured_worker
     from forex.journal import JournalStore
 
     config = load_config(config_path)
-    worker = configured_worker(config.cloud, JournalStore(config.database.path))
+    path = config.paper.database if config.mode == "paper" else config.database.path
+    worker = configured_worker(config.cloud, JournalStore(path), config.paper.halt_file)
     if worker is None:
         print("Cloud mirror disabled. Local records retained; no cloud request was made.")
         return 0
+    if reconcile:
+        cursor = repaired = 0
+        while True:
+            count, after = worker.reconcile_page(datetime.now(UTC), cursor)
+            repaired += count
+            if after == cursor:
+                break
+            cursor = after
+        print(json.dumps({"requeued_for_repair": repaired, "last_sequence": cursor}))
     result = worker.sync_once(datetime.now(UTC), config.cloud.batch_size)
     print(json.dumps(asdict(result)))
     return 2 if result.failed else 0
@@ -456,6 +466,31 @@ def verify_intelligence(config_path: Path) -> int:
     return 0
 
 
+def walk_forward_research(config_path: Path, database: Path) -> int:
+    from forex.backtest import parameter_experiment, run_walk_forward
+
+    config = load_config(config_path)
+    configure_logging(config)
+    dataset, _ = validate_research_database(database, config.broker.symbols, config.market_data)
+    store = CandleStore(database)
+    experiment = parameter_experiment(config.analysis, {})
+    for symbol in config.broker.symbols:
+        logging.getLogger("forex.research").info("%s fixed-parameter walk-forward starting", symbol)
+        result = run_walk_forward(symbol, store.load(symbol, Timeframe.H1), store.load(symbol, Timeframe.H4),
+                                  [experiment], config.backtest, policy_from_config(config.risk))
+        path = config.backtest.report_directory / f"walk-forward-{symbol}-{dataset.fingerprint}.json"
+        write_json_report(path, {"symbol": symbol, "dataset": dataset,
+                                "experiment": {"experiment_id": experiment.experiment_id,
+                                               "parameter_version": experiment.parameter_version,
+                                               "overrides": experiment.overrides,
+                                               "analysis": experiment.analysis.model_dump()},
+                                "validation": result, "strategy_validated": False,
+                                "costs_complete": False, "broker_h4_alignment_verified": False,
+                                "scope": "Fixed baseline only; no parameter optimization. Final holdout untouched. Candidate-level outcomes are not a portfolio simulation."})
+        logging.getLogger("forex.research").info("%s completed %s folds; report %s", symbol, len(result.fold_results), path)
+    return 0
+
+
 def run_paper(config_path: Path) -> int:
     from threading import Event
 
@@ -501,7 +536,8 @@ def main() -> None:
                             "import-history", "verify-history", "verify-context", "verify-execution",
                             "verify-journal", "sync-journal", "run-paper", "verify-paper",
                             "verify-intelligence", "diagnose", "experiment-propose",
-                            "experiment-attach", "experiment-status"]
+                            "experiment-attach", "experiment-status", "walk-forward-research",
+                            "reconcile-journal"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -519,6 +555,12 @@ def main() -> None:
     parser.add_argument("--h4-alignment-hour-utc", type=int, default=0)
     args = parser.parse_args()
     try:
+        if args.command == "reconcile-journal":
+            raise SystemExit(sync_journal(args.config, reconcile=True))
+        if args.command == "walk-forward-research":
+            if args.research_database is None:
+                parser.error("walk-forward-research requires --research-database")
+            raise SystemExit(walk_forward_research(args.config, args.research_database))
         if args.command in {"diagnose", "experiment-propose", "experiment-attach", "experiment-status"}:
             from forex.intelligence import AcceptanceCriteria, ExperimentRegistry, diagnose
             from forex.journal import JournalStore

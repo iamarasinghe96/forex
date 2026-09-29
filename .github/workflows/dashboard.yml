@@ -22,6 +22,16 @@ jobs:
         working-directory: dashboard
       - run: npm test
         working-directory: dashboard
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm run test:rules
+        working-directory: dashboard
+      - run: npx playwright install --with-deps chromium
+        working-directory: dashboard
+      - run: npm run test:browser
+        working-directory: dashboard
       - run: npm run build
         working-directory: dashboard
         env:

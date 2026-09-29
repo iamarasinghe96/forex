@@ -208,6 +208,17 @@ def test_breakeven_and_atr_trailing_changes_apply_on_following_bar() -> None:
     assert trade.exit_reason == "STOP"
 
 
+def test_atr_trailing_cannot_activate_before_breakeven() -> None:
+    bars = [candle(1, open_=1, high=1.05, low=.95, close=1.04),
+            candle(2, open_=1.04, high=1.05, low=1.01, close=1.03)]
+    trade = simulate_trade(candidate(evaluation=START + timedelta(hours=1)), bars,
+                           BacktestConfig(simulation_horizon_bars=2, reward_risk=2,
+                                          breakeven_at_r=1, atr_trailing_multiple=2))
+    assert trade is not None
+    assert trade.exit_reason != "STOP"
+    assert trade.exit_price == 1.03
+
+
 def test_spread_cost_is_known_but_unvalidated_and_unknowns_remain_explicit() -> None:
     model = CostModel({"EURUSD": ResearchInstrumentMetadata("EURUSD", Decimal("0.00001"), 5)})
     trade = simulate_trade(candidate(evaluation=START + timedelta(hours=1)),

@@ -33,3 +33,5 @@ Implementation follows Firebase's official [Auth guide](https://firebase.google.
 and [snapshot listener guide](https://firebase.google.com/docs/firestore/query-data/listen).
 Actual authorized/unauthorized cloud sign-in and deployed security rules still require
 operator setup and external verification; local model tests do not certify those checks.
+
+Security verification: local Firestore emulator tests passed for operator/stranger/anonymous reads, mode restrictions, every client write, operator-record replacement and revocation. Run npm run test:rules with Java 21. This does not certify deployed project IAM or Auth settings. Current npm audit --omit=dev reports zero vulnerabilities; firebase-tools development dependencies report five moderate transitive advisories (OpenTelemetry/uuid). No forced major downgrade was applied.

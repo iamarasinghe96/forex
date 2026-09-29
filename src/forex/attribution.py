@@ -22,15 +22,19 @@ def attribute(evidence: Mapping[str, Mapping[str, Any]]) -> tuple[Attribution, .
     for identity, item in evidence.items():
         if item.get("kind") == "hard_risk_block":
             result.append(Attribution("HARD_RISK_BLOCK", (identity,), str(item.get("reason", "Risk block"))))
-        if item.get("kind") == "analysis_no_candidate":
+        if item.get("kind") in {"analysis_no_candidate", "no_trade"}:
             result.append(Attribution("ANALYTICAL_NO_CANDIDATE", (identity,),
                                        str(item.get("reason", "No candidate"))))
         if item.get("ambiguous") is True:
             result.append(Attribution("INTRABAR_PATH_AMBIGUOUS", (identity,),
                                        "OHLC cannot establish the event ordering."))
-        if item.get("exit_reason") in {"STOP", "AMBIGUOUS_STOP_FIRST"}:
+        exit_reason = item.get("exit_reason", item.get("reason") if item.get("kind") == "trade_closed" else None)
+        if exit_reason in {"STOP", "AMBIGUOUS_STOP_FIRST"}:
             result.append(Attribution("PROTECTIVE_STOP_EXIT", (identity,),
                                        "Recorded outcome exited at the protective stop."))
+        if item.get("kind") == "context_rejection":
+            result.append(Attribution("CONTEXT_REJECTION", (identity,),
+                                       "Structured context review withheld the permitted entry; inspect its cited evidence."))
         before, after = item.get("entry_regime"), item.get("exit_regime")
         if before is not None and after is not None and before != after:
             result.append(Attribution("OBSERVED_REGIME_CHANGE", (identity,),

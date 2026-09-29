@@ -22,7 +22,14 @@ Create `data/HALT_PAPER` to halt entries and flatten simulated positions on the 
 quote. The latch persists across daily boundaries and restarts. During a data outage, retain
 positions and report uncertainty; do not invent a successful flatten. Review the reason and
 positions before manually removing the latch. This local control is separate from the
-read-only dashboard; authenticated phone control is not yet deployed.
+read-only dashboard. Optional remote halt uses a separate Firebase administrator console
+path: after enabling `cloud.emergency_halt_enabled`, an authorized project administrator
+can create/update `controls/paper_halt` with `mode: "PAPER"` and `active: true` from the
+authenticated Firebase Console (including a phone browser). Normal dashboard users cannot
+read/write this path. The worker latches the local halt file and never remotely clears it.
+Clear both the remote request and local latch only after manual review. This path is not
+deployed or externally verified; it is best effort during connectivity and is not a substitute
+for the local halt procedure. There is no public privileged endpoint or dashboard trading button.
 
 `scripts/start-paper.ps1` is suitable for an operator-created Windows Scheduled Task running
 under the same interactive user as MT5. Configure restart-on-failure and use the process lock

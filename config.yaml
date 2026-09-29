@@ -112,6 +112,7 @@ execution:
 # Retry/poll/batch limits are UNVALIDATED operational defaults.
 cloud:
   enabled: false
+  emergency_halt_enabled: false
   project_id: ""
   poll_seconds: 10
   batch_size: 50

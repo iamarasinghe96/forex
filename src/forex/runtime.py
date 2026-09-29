@@ -196,7 +196,7 @@ class PaperRuntime:
         temporary.replace(path)
 
     def run(self, stop: Event, maximum_cycles: int | None = None) -> None:
-        worker = configured_worker(self.config.cloud, self.journal)
+        worker = configured_worker(self.config.cloud, self.journal, self.config.paper.halt_file)
         thread = Thread(target=worker.run, args=(stop, self.clock, self.config.cloud.poll_seconds,
                                                 self.config.cloud.batch_size), daemon=True) if worker else None
         alert_thread = None

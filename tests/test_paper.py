@@ -180,3 +180,37 @@ def test_notification_outage_retains_delivery_cursor(tmp_path: Path) -> None:
     sender.send.side_effect = None
     assert NotificationWorker(journal, sender).once() == 1
     assert worker.once() == 0
+
+
+def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from test_analysis import candles, compact_config
+    from test_risk import candidate
+
+    from forex.analysis import AnalysisResult, analyse_market
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.domain import Timeframe
+    from forex.runtime import PaperRuntime
+
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.analysis = compact_config()
+    config.broker.symbols = ["EURUSD"]
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    series = {frame: candles(frame, [1.1] * 60, start=NOW-frame.duration*60) for frame in Timeframe}
+    feed.candles.side_effect = lambda symbol, frame, start, end: series[frame]
+    snapshot = analyse_market("EURUSD", series[Timeframe.H1], series[Timeframe.H4], NOW, config.analysis).snapshot
+    fixture_candidate = replace(candidate(), candidate_id=snapshot.evaluation_id, evaluation_id=snapshot.evaluation_id)
+    monkeypatch.setattr("forex.runtime.analyse_market", lambda *args: AnalysisResult(snapshot, fixture_candidate))
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)), lambda: NOW)
+    runtime.cycle()
+    assert len(paper.positions()) == 1
+    opened = next(e for e in runtime.journal.events() if e.kind == "trade_opened")
+    assert set(opened.payload["decision_provenance"]) == {"candidate", "risk_decision", "context_review"}
+    assert opened.payload["trade_style"] == "DAY"
+    runtime.execution.reconcile(NOW, NOW)
+    paper.journal_fills(runtime.journal)
+    assert len(paper.positions()) == 1
+    feed.place_order.assert_not_called()

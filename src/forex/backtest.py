@@ -306,6 +306,7 @@ def simulate_trade_attempt(candidate: TradeCandidate, future_h1: Sequence[Candle
                                  SimulationStatus.NON_POSITIVE_INITIAL_RISK, None)
     target = entry + risk * config.reward_risk * (1 if candidate.side is Side.LONG else -1)
     active_stop = stop
+    breakeven_reached = False
     exit_price: float | None = None
     exit_reason: str | None = None
     ambiguous = False
@@ -339,8 +340,9 @@ def simulate_trade_attempt(candidate: TradeCandidate, future_h1: Sequence[Candle
             break
         # Stop changes take effect only after this entire OHLC bar, avoiding favourable ordering.
         if config.breakeven_at_r is not None and favorable >= config.breakeven_at_r:
+            breakeven_reached = True
             active_stop = max(active_stop, entry) if candidate.side is Side.LONG else min(active_stop, entry)
-        if config.atr_trailing_multiple is not None:
+        if config.atr_trailing_multiple is not None and breakeven_reached:
             atr_value = float(candidate.feature_snapshot["h1_atr"])
             proposed = (float(bar.close) - config.atr_trailing_multiple * atr_value
                         if candidate.side is Side.LONG

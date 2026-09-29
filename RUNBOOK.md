@@ -217,3 +217,8 @@ Back up SQLite with its backup API rather than copying a live WAL database file.
 Before enabling cloud: configure a Firebase project, create the operator Auth UID, deploy/review
 rules and indexes, create `access/operator` with that UID using Admin privileges, and run allowed-
 UID/other-UID/anonymous/write-denial emulator tests. Keep the service-account file on the VPS.
+
+## Integrated research and cloud checks
+Use forex walk-forward-research --research-database data/dukascopy-research.sqlite3 for actual fixed-baseline fold runs; output reports remain local/ignored. Final holdout is not evaluated. This command does not establish realistic costs, broker H4 equivalence or strategy validity.
+Use forex reconcile-journal after configured cloud outages to compare event fingerprints and all/day aggregates, requeue divergence and deliver one configured batch. Repeat sync-journal until drained. Only one local sync batch may write at a time. In paper mode these commands use the separate paper database.
+Local emulator security tests passed; actual deployed Auth/IAM/rules and emergency admin-console halt delivery require external verification.

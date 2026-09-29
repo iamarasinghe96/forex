@@ -14,10 +14,21 @@ PROJECT_CONTEXT.md remain authoritative. Do not fabricate costs, broker checks o
 - PR #11: requirements/guardrails reconciliation, not merged.
 
 ## Active
-Layer 6 implemented on codex/layer6-context, based on documentation branch. 112 tests passed; Ruff/mypy clean; verify-context passed offline. Providers remain disabled. Next: Layer 7 execution/reconciliation.
-Implement constrained JSON review, provider abstraction/failover, persistent response cache,
-cost/attempt ledger and offline verification. Then continue Layers 7–11 and deployment tools.
-Each layer needs independent tests, Ruff/mypy, a runnable verification command, docs and draft PR.
+Current branch: `codex/layers6-11-integration`. Layers 6–11 implemented and pushed as draft
+PRs #12–17, stacked on documentation PR #11. Main remains unchanged. Draft PR9/10 research
+fixes have also been cherry-picked into this integration branch. Final integration edits
+and checklist/report are in progress; preserve the working tree.
+
+Latest full suite: 167 passed. Subsequent report-writing regression passed separately;
+Ruff and mypy (30 source files) clean. Dashboard: six model tests, real Edge mobile setup
+test, production build and local Firestore emulator authorization/write-denial checks passed.
+
+Actual fixed-baseline three-pair walk-forward command is running sequentially. The first
+attempt computed EURUSD but failed when serializing AnalysisConfig into its report; this
+was fixed and regression-tested. No result from that failed run is counted. Current process
+is the rerun (exec session 18157); preserve it and inspect reports/backtest for completed
+walk-forward artifacts. Memory is limited on this PC, so do not start parallel research.
+Final holdout stays untouched; costs/H4 limitations still prevent formal validation.
 
 ## Remaining manual/external evidence
 Track details in OPERATOR_SETUP.md as implementation progresses. No actual provider credentials,
@@ -47,3 +58,5 @@ Layer 10 validation finalized: 143 tests passed; 10 focused paper tests passed a
 
 Layer 11 checkpoint: full-state diagnosis and immutable experiment registry implemented, with explicit pre-registered criteria and historical/recent/walk-forward/OOS/shadow/paper evidence gates. Source/report hashes, UTC boundaries, holdout separation, costs/H4 and genuine elapsed-duration limits checked; ready means operator review only, never automatic config mutation. Ten focused intelligence tests passed. Final suite running; next integrate draft Layer 4 holdout/performance fixes into a review-only integration branch and finish final review/limitations report.
 Layer 11 validation: 153 pytest tests passed; Ruff clean; mypy clean (30 files); verify-intelligence passed. No real evidence promoted.
+
+Integration review: cherry-picked all draft PR9/10 commits, preserved new commands, fixed pre-break-even historical ATR trailing with regression test, linked full decision provenance to paper fills, added optional admin-console remote PAPER halt latch (disabled; dashboard writes remain forbidden), and ran local Firestore emulator security checks successfully. Actual fixed-baseline walk-forward research running for all three pairs; final holdout stays untouched. Development-only Firebase CLI audit has five moderate transitive advisories; browser production audit zero. Continue final tests/reports and preserve the active research process.

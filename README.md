@@ -1,4 +1,13 @@
-# Forex Operator — Layer 4 Historical Research
+# Forex Operator — Research and Paper Development Through Layer 11
+
+This development branch adds constrained context review, guarded demo execution transport,
+local-first journaling/cloud mirror, a read-only dashboard, durable paper runtime and
+evidence-gated performance intelligence. These are draft changes awaiting operator review;
+integrations and paper execution default disabled. Main has not been merged or deployed.
+No real orders, completed elapsed soak or formally validated trading edge is claimed.
+
+Start with `BUILD_PROGRESS.md`, `OPERATOR_SETUP.md`, `docs/PAPER_OPERATIONS.md` and
+`docs/INTELLIGENCE.md`. The original Layer 1–5 description below remains the baseline context.
 
 Layers 1–2 provide the verified read-only broker and market-data foundation. Layer 3 adds pure,
 deterministic analysis and candidate generation; it still contains no risk sizing or order execution
