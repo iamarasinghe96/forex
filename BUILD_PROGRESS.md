@@ -1,66 +1,118 @@
 # Build progress and resumption
 
-User authorization: continue building through Layer 11 without routine interruptions;
-leave credential/manual setup placeholders disabled and record the final operator checklist.
-Do not merge semantic/architecture changes or place real orders. Existing guardrails in
-PROJECT_CONTEXT.md remain authoritative. Do not fabricate costs, broker checks or soak evidence.
+## Current status: development implementation through Layer 11 complete
 
-## Completed in this work session
-- All three Dukascopy pairs imported/verified with original hashes and no data committed.
-- Layer 4 pre-holdout research completed using draft PRs #9/#10. Gross expectancy R:
-  EURUSD -0.06453886285315559; GBPUSD -0.07469902592687842; USDJPY 0.001297812487040083.
-- Final holdout begins 2025-09-28T16:00:00Z; parameters remain UNVALIDATED.
-- PR #9: CLI holdout correction. PR #10: exact replay performance. Neither merged.
-- PR #11: requirements/guardrails reconciliation, not merged.
+Updated 30 September 2026. User-authorized local implementation and verification are complete.
+Credential-dependent integrations remain disabled, manual setup is documented, and actual
+broker/cloud/VPS verification and elapsed paper soak remain NOT_RUN. No real-money orders,
+parameter promotion, deployment or merge has been performed.
 
-## Active
-Current branch: `codex/layers6-11-integration`. Layers 6–11 implemented and pushed as draft
-PRs #12–17, stacked on documentation PR #11. Main remains unchanged. Draft PR9/10 research
-fixes have also been cherry-picked into this integration branch. Final integration edits
-and checklist/report are in progress; preserve the working tree.
+Current branch: `codex/layers6-11-integration`.
+Combined draft review: https://github.com/iamarasinghe96/forex/pull/18
+Main remains `6b0273d8ccc84143ffeb0495adcf9a19f0021d8b`.
+The runtime/dashboard source is commit `89e0cbc84bc1cb5445c1ae7976c7fc2d39e40667`;
+`bbd3f9972e9968b93520ed3f40e9ecf11b907c6e` adds the local cloud adapter verification script.
+Later commits close out documentation and completed research evidence.
 
-Latest full suite: 167 passed. Subsequent report-writing regression passed separately;
-Ruff and mypy (30 source files) clean. Dashboard: six model tests, real Edge mobile setup
-test, production build and local Firestore emulator authorization/write-denial checks passed.
+## Authorization and review boundary
 
-Actual fixed-baseline three-pair walk-forward command is running sequentially. The first
-attempt computed EURUSD but failed when serializing AnalysisConfig into its report; this
-was fixed and regression-tested. No result from that failed run is counted. Current process
-is the rerun (exec session 18157); preserve it and inspect reports/backtest for completed
-walk-forward artifacts. Memory is limited on this PC, so do not start parallel research.
-Final holdout stays untouched; costs/H4 limitations still prevent formal validation.
+Continue from the existing repository, not from a fresh build. PROJECT_CONTEXT.md and
+later operator guardrails govern the original brief. Local commands, tests, branches,
+commits, pushes and draft PRs are authorized. Do not merge semantic/risk/interface/
+validation/execution/promotion/architecture changes without operator review. Do not commit
+historical market data, SQLite databases or secrets. Keep external setup placeholders
+explicit and disabled; do not fabricate realistic costs, broker checks or soak duration.
 
-## Remaining manual/external evidence
-Track details in OPERATOR_SETUP.md as implementation progresses. No actual provider credentials,
-Firestore/Auth/Vercel setup, MT5 execution verification or VPS soak has been completed here.
+## Implemented
 
-## Continuation
-A persistent Codex goal is active. This session exposes no automation scheduling tool.
-No automatic hourly-reset retry has been configured or verified; usage reset timing is not known.
-Do not launch concurrent writers or claim that scheduling exists. Resume from this file and GitHub
-branches/PRs, check working-tree changes first, and preserve all uncommitted work.
+- Layer 6: constrained JSON context review, provider failover/cache, risk ceilings and costs.
+- Layer 7: durable order identities, fresh risk checks, ambiguity/reconciliation, demo-only
+  MT5 transport, monotonic stop protection and persistent risk latches.
+- Layer 8: full-state SQLite journal, decision provenance, attribution, reserve ledger,
+  exports, persistent cloud outbox and aggregate divergence repair.
+- Layer 9: authenticated read-only mobile dashboard, history/rejections, scoped performance,
+  reserve evidence and exports; client writes denied. Remote PAPER halt is separately
+  administered and cannot remotely clear a local halt latch.
+- Layer 10: durable paper broker/runtime, restart recovery, duplicate guards, quote marks,
+  heartbeat/watchdog, notifications, backups, Windows operations and actual-interval soak reports.
+- Layer 11: all-state diagnosis, immutable hypotheses, pre-registered criteria, hashed
+  evidence and historical/recent/walk-forward/OOS/shadow/paper gates. Promotion requires
+  operator review and never automatically changes production parameters.
 
-Layer 7 checkpoint: implemented offline-verified execution service and guarded demo-only MT5
-transport on codex/layer7-execution. 126 pytest tests passed; Ruff/mypy clean; verify-execution
-passed with no broker calls. Includes restart-safe reservations, ambiguity/reconciliation,
-fresh-risk rechecks, review identity/ceiling binding, runtime constraints, filling modes,
-monotonic stop changes, bot-ticket closes and non-clearing equity observations. SQLite handles
-are now closed explicitly on Windows. External broker verification remains pending.
-Next: Layer 8 full decision journal/attribution, tax evidence and asynchronous Firestore mirror.
+Draft PRs #12–17 preserve the individual layer stack on requirements PR #11. PR #18 also
+includes the research corrections from #9/#10. It is an alternative combined review path;
+do not blindly merge both the stack and integration. Main was preserved.
+Historical trailing now requires break-even first; the baseline used trailing disabled.
 
-Layer 8 checkpoint: transactional full-state journal, reserve ledger, evidence attribution, CSV export and persistent asynchronous Firestore outbox implemented. Optional Firebase SDK installed; cloud credentials/rules deployment and external verification remain pending. Continue Layer 9 read-only dashboard after tests/commit.
-Validation: 133 pytest tests passed; Ruff clean; mypy clean (25 source files). Layer 8 ready for draft review. Active next work: Layer 9.
+## Final verification
 
-Layer 9 checkpoint: read-only mobile dashboard implemented with Firebase Auth, precomputed all-time cards, paginated decision history, rejected/no-trade evidence, subset filters/performance, equity observations, reserve FY grouping and safe CSV exports. Six model tests and one real Edge mobile setup test passed; production build passed. Dependencies audited with zero vulnerabilities. External Firebase auth/rules/Pages not configured or claimed verified. Next: Layer 10 durable paper runtime and failure/soak tooling.
+- Current full Python suite: **173 passed** (36.95 seconds, final rerun).
+- Ruff clean; mypy clean across 31 source files.
+- Dashboard: six model tests, actual Edge mobile setup test and production build passed.
+- Local Firestore emulator: operator-only PAPER/DEMO reads, unauthorized/anonymous denial,
+  all client-write denial, mode restriction and operator revocation passed.
+- Actual Python Firebase adapter passed local-emulator event delivery, aggregate repair
+  and separate PAPER halt latching. Script: scripts/verify_firestore_mirror.py.
+- Windows start/watchdog scripts parsed; offline layer verification commands passed.
+  Default paper runtime refuses incomplete/disabled setup.
+- Dashboard GitHub CI passed on runtime source commit 89e0cbc:
+  https://github.com/iamarasinghe96/forex/actions/runs/36556956061
+- Production browser dependency audit: zero vulnerabilities. Development-only Firebase
+  CLI tooling: five moderate transitive advisories; no forced major downgrade applied.
 
-Layer 10 checkpoint: durable quote-driven paper broker and shared analysis/risk/context/execution runtime implemented, with duplicate process/decision guards, restart recovery, simulated exit/reserve replay, halt latch, heartbeat/watchdog, independent notifications, backups and Windows operation notes. Full suite 142 passed before one additional notification test; focused paper suite now 10 passed. Ruff/mypy passed before latest small additions. Actual elapsed live-data soak NOT_RUN; paper disabled pending starting balance/rollover/MT5. Continue final verification/commit then Layer 11 evidence-based research/promotion gates.
-Layer 10 validation finalized: 143 tests passed; 10 focused paper tests passed after feed-heartbeat tightening; Ruff/mypy clean and verify-paper passed without MT5. Active next: Layer 11.
+## Historical research: complete local runs, not formal validation
 
-Layer 11 checkpoint: full-state diagnosis and immutable experiment registry implemented, with explicit pre-registered criteria and historical/recent/walk-forward/OOS/shadow/paper evidence gates. Source/report hashes, UTC boundaries, holdout separation, costs/H4 and genuine elapsed-duration limits checked; ready means operator review only, never automatic config mutation. Ten focused intelligence tests passed. Final suite running; next integrate draft Layer 4 holdout/performance fixes into a review-only integration branch and finish final review/limitations report.
-Layer 11 validation: 153 pytest tests passed; Ruff clean; mypy clean (30 files); verify-intelligence passed. No real evidence promoted.
+All three original imports were verified: EURUSD 48,263 H1 rows, GBPUSD 48,260, USDJPY
+48,262; approximately 7.74 years. Full data/reports remain local and ignored by Git.
+Research DB: data/dukascopy-research.sqlite3.
+Dataset: dukascopy-h1-bid-2019-2026-v1; Dukascopy bid; volume unavailable; fixed UTC H4 hour 0.
 
-Integration review: cherry-picked all draft PR9/10 commits, preserved new commands, fixed pre-break-even historical ATR trailing with regression test, linked full decision provenance to paper fills, added optional admin-console remote PAPER halt latch (disabled; dashboard writes remain forbidden), and ran local Firestore emulator security checks successfully. Actual fixed-baseline walk-forward research running for all three pairs; final holdout stays untouched. Development-only Firebase CLI audit has five moderate transitive advisories; browser production audit zero. Continue final tests/reports and preserve the active research process.
+Corrected pre-holdout baseline gross expectancy R:
+EURUSD -0.06453886285315559; GBPUSD -0.07469902592687842; USDJPY +0.001297812487040083.
 
-Final follow-up: 169 full Python tests passed and GitHub dashboard CI succeeded for integration commit 51faf0d. Added actual heartbeat-based soak reporting and explicit broker market-entry permission checks for PAPER; 15 affected tests passed, Ruff/mypy clean (31 files). New edits awaiting final full test/commit. Walk-forward process 18157 / Python PID 80192 remains running sequentially; preserve it.
-Latest full Python suite: 173 passed. Subsequent position-mark/pips additions passed all 12 paper tests; Ruff/mypy clean (31 files). Soak reporting preserves actual elapsed/gap/version evidence; broker close-only restrictions are explicit and open-position unrealized P&L is available to the read-only dashboard. Scripts parsed successfully. Walk-forward process still running; do not restart it.
-Python Firestore mirror integration also passed against the local demo emulator: actual SDK event delivery, aggregate divergence repair and remote PAPER halt latching. External project NOT_RUN. Reproducible script: scripts/verify_firestore_mirror.py; emulator shut down cleanly. Walk-forward still active.
+Actual fixed-baseline walk-forward process **finished successfully** for all three pairs.
+The old session 18157 is finished; do not restart or wait on it. Nine folds per pair were
+verified, with 730-day training, 180-day testing/step, one unchanged parameter version and
+no optimization. Test span: 2021-01-01 through 2025-06-09 UTC. Final holdout begins
+2025-09-28T16:00:00Z and was not evaluated by these runs. An earlier serialization failure
+was fixed and regression-tested; only the successful complete reports count.
+
+| Pair | Completed candidate simulations | Gross expectancy R | Gross profit factor |
+|---|---:|---:|---:|
+| EURUSD | 8,024 | -0.03967421 | 0.923877 |
+| GBPUSD | 8,176 | -0.05885054 | 0.889211 |
+| USDJPY | 8,824 | +0.04080980 | 1.085538 |
+
+See docs/RESEARCH_RESULTS.md for scope and report SHA256 hashes. Reports are under
+reports/backtest/walk-forward-<PAIR>-185c5a2aa8772f0fc863437b3f80b057d449085df03702b9ea1dfe09497e12ab.json.
+These include below-minimum-conviction candidate outcomes and are not executed portfolio
+returns. Costs remain incomplete, broker DST/H4 equivalence unresolved, and all three
+reports explicitly state strategy_validated=false. No candidate was promoted.
+Monte Carlo remains IID outcome bootstrap, not trade-order permutation.
+
+## Manual/external completion checklist
+
+OPERATOR_SETUP.md and docs/PAPER_OPERATIONS.md contain the concrete setup steps:
+1. Review the draft changes before merging/deploying.
+2. Choose paper starting AUD balance and daily UTC risk boundary; neither is guessed.
+3. Configure provider keys/models, Firebase credentials/Auth/operator UID/web settings,
+   and optional Telegram credentials locally.
+4. Verify actual MT5 demo account, quotes, broker alignment, constraints, execution,
+   reconnects and reconciliation; collect genuine costs.
+5. Deploy reviewed rules and read-only Pages dashboard; verify access, revocation,
+   outages and the separate emergency halt.
+6. Configure Windows/VPS startup/watchdog and test backups/recovery under the MT5 session.
+7. Run a real unattended paper soak and independently review candidate evidence.
+
+## Resume guidance
+
+There is no unfinished background research to preserve from this checkpoint. Inspect the
+working tree and GitHub before any follow-up. The next phase is operator setup and external
+evidence, not another implementation pass through the already-built layers. Credentials,
+operator decisions and genuine elapsed duration must not be replaced with fabricated values.
+No automatic usage-reset retry was configured. Real-money production remains out of scope.
+
+User-facing handoff and full local research copies are in the task outputs folder:
+C:/Users/Indika/Documents/Codex/2026-09-29/referenced-chatgpt-conversation-this-is-an/outputs
+Files: FOREX_BUILD_HANDOFF.md, WALK_FORWARD_RESULTS.md, walk-forward-summary.json, and the
+three full walk-forward reports. Historical baseline evidence is retained separately.

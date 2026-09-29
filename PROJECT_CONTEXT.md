@@ -19,7 +19,10 @@ validation/H4 methodology, execution, learning/promotion, or major architecture.
 what was found, why the change is needed, changed files, test/Ruff/mypy evidence, and whether
 agreed behavior changes. Keep broker/VPS verification separate from offline test evidence.
 
-## Original requirement → current implementation → outstanding
+## Original requirement → merged-main implementation → outstanding at reconciliation
+
+This table records the starting merged-main state. For the completed draft implementation
+through Layer 11 and remaining external checks, read BUILD_PROGRESS.md.
 
 | Requirement | Merged implementation | Still outstanding |
 |---|---|---|
@@ -64,9 +67,12 @@ Raw CSV/tick data, research SQLite databases and secrets stay out of Git.
   practical. It is stacked on #9 and is not a strategy/parameter change. Review before merge.
 - Additional candidate defect: Layer 4 simulation currently permits configured ATR trailing
   before the breakeven stage. The default multiple is null, so current baseline runs do not
-  exercise this path. Resolve/test separately before treating enabled trailing as compliant.
+  exercise this path. The integration branch now fixes this with a break-even latch and
+  regression coverage; review the semantic correction before merge.
 
-The CLI currently reports planned walk-forward windows, not an executed OOS study. Current
+At initial reconciliation the CLI reported planned walk-forward windows only. The integration
+branch now includes an executed fixed-baseline walk-forward command; nine folds per pair
+completed, with evidence in docs/RESEARCH_RESULTS.md. Current
 Monte Carlo is seeded IID bootstrap, not the original brief's trade-order permutation;
 these are distinct methods and must not be silently relabelled. Current research is in
 normalized R, not an account-sized portfolio simulation. Preserve these distinctions.
