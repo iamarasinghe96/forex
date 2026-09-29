@@ -41,3 +41,6 @@ Configure Firebase web app (public identifiers only), Google sign-in, authorized
 
 ## Layer 10 paper operation
 Follow docs/PAPER_OPERATIONS.md: choose simulated starting AUD balance and UTC daily-risk rollover, verify MT5 data, then explicitly enable paper. Configure scheduled startup/watchdog and optional phone/cloud credentials on the actual VPS. Run real elapsed soak and test outage/restart recovery. No soak, VPS integration or remote emergency endpoint has been verified. ATR trailing remains unconfigured; paper polling/cost limitations remain explicit.
+
+## Layer 11 evidence gates
+No candidate is promoted or validated. Follow docs/INTELLIGENCE.md after genuine journal evidence exists. Pre-register justified criteria, produce independently reviewed historical/recent/WF/OOS/shadow/paper reports, and trace hashes to actual runs. Current H4 alignment, cost and soak gaps block readiness. Parameter activation and PR merges require explicit review; the registry cannot change production configuration.
