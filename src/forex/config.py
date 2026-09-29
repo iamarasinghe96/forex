@@ -179,6 +179,17 @@ class ExecutionConfig(BaseModel):
     maximum_quote_age_seconds: float = Field(default=30, gt=0)
     maximum_decision_age_seconds: float = Field(default=300, gt=0)
     session_rollover_hour_utc: int | None = Field(default=None, ge=0, le=23)
+    session_rollover: Literal["new_york_close"] | None = None
+
+    @model_validator(mode="after")
+    def one_session_boundary(self) -> ExecutionConfig:
+        if self.session_rollover is not None and self.session_rollover_hour_utc is not None:
+            raise ValueError("Choose New York close or a fixed UTC rollover, not both")
+        return self
+
+    @property
+    def rollover_configured(self) -> bool:
+        return self.session_rollover is not None or self.session_rollover_hour_utc is not None
 
 
 class CloudConfig(BaseModel):

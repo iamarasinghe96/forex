@@ -94,7 +94,8 @@ Monte Carlo remains IID outcome bootstrap, not trade-order permutation.
 
 OPERATOR_SETUP.md and docs/PAPER_OPERATIONS.md contain the concrete setup steps:
 1. Review the draft changes before merging/deploying.
-2. Choose paper starting AUD balance and daily UTC risk boundary; neither is guessed.
+2. DONE: operator selected AUD 100; delegated daily boundary configured as 17:00 New York
+   with automatic US DST. Paper/demo execution remain disabled.
 3. Configure provider keys/models, Firebase credentials/Auth/operator UID/web settings,
    and optional Telegram credentials locally.
 4. Verify actual MT5 demo account, quotes, broker alignment, constraints, execution,
@@ -116,3 +117,16 @@ User-facing handoff and full local research copies are in the task outputs folde
 C:/Users/Indika/Documents/Codex/2026-09-29/referenced-chatgpt-conversation-this-is-an/outputs
 Files: FOREX_BUILD_HANDOFF.md, WALK_FORWARD_RESULTS.md, walk-forward-summary.json, and the
 three full walk-forward reports. Historical baseline evidence is retained separately.
+
+## Setup continuation — 30 September 2026
+
+Operator selected AUD 100 virtual starting balance and delegated the reset time based on
+industry practice. Config now uses 17:00 America/New_York, matching IC Markets published
+New York-close day. Added an explicit NY-close option alongside backward-compatible fixed
+UTC settings, mutual-exclusion validation, and DST-boundary regression tests. This is an
+unmerged change on draft PR #18. No default paper database or running MT5 terminal was
+found during setup. Next user action: open MT5 and sign into the configured IC Markets AU
+demo account; credentials stay local. Then perform read-only account/quote/spec checks.
+
+Setup verification: full suite 180 passed, including winter/summer and both US DST transition
+days; Ruff and mypy clean after an explicit naive-timestamp test fixture adjustment.

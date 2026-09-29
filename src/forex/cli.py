@@ -501,7 +501,7 @@ def run_paper(config_path: Path) -> int:
     config = load_config(config_path)
     if (not config.paper.enabled or config.mode != "paper" or
             config.paper.starting_balance_aud is None or
-            config.execution.session_rollover_hour_utc is None):
+            not config.execution.rollover_configured):
         raise OperatorError("Paper runtime is disabled or incomplete. Configure starting balance and daily rollover, then explicitly enable paper mode. No broker order was sent.")
     if config.paper.database.resolve() == config.database.path.resolve():
         raise OperatorError("Use a separate paper database so simulated risk latches cannot affect broker execution.")

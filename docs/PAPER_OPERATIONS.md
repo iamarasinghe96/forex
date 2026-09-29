@@ -1,7 +1,7 @@
 # Paper operation and evidence
 
 `forex run-paper` is disabled until `paper.enabled`, starting AUD balance and the daily
-UTC risk-rollover hour are explicitly configured. It requires a working read-only MT5
+risk-session boundary are explicitly configured. It requires a working read-only MT5
 market-data connection; no MT5 order method is called. A separate paper SQLite database
 prevents simulated account state from sharing real-broker risk latches. A process lock
 rejects duplicate local runtimes.
@@ -61,3 +61,19 @@ and cloud outages and operator actions. Offline fast-forward tests are not elaps
 Review evidence before configuring demo execution or claiming operational readiness.
 
 Use forex paper-soak-report --start-utc <UTC> --end-utc <UTC> to summarize actual persisted heartbeat evidence. It exposes gaps, clock reversals, configuration/code fingerprints and incident IDs. It excludes unobserved time and never declares operational incidents resolved or strategy validated. Market-entry permissions are checked even in PAPER; close-only/disabled/restricted symbols block new simulated entries while exits remain available.
+
+## Selected operator setup (30 September 2026)
+
+Starting simulated balance: AUD 100. The selected daily risk boundary is
+`execution.session_rollover: new_york_close`, meaning 17:00 America/New_York with US DST
+(21:00 UTC in daylight time, 22:00 UTC in standard time). The alternative
+`session_rollover_hour_utc` must remain null. IC Markets documents this convention at
+https://www.icmarkets.com.au/en/help-resources/help-centre . This sets risk accounting;
+it is not an instruction to open or close positions at rollover, and does not resolve
+historical H4 alignment. Journal daily summaries continue to use explicitly labelled UTC days.
+
+Never switch boundaries during an active paper run: the NY policy uses its own session
+identity namespace and switching could reset the daily risk baseline. Back up the database
+and review any existing positions/latches before such a migration. No existing default
+paper database was present during this initial setup. Changing starting_balance_aud does
+not overwrite an existing account; persisted paper balances remain authoritative.

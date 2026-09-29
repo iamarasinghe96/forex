@@ -13,14 +13,15 @@ from decimal import Decimal
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from forex.alerts import TelegramAlerter
 from forex.analysis import Side, analyse_market, closed_candles
 from forex.broker.base import Broker
 from forex.cloud_sync import configured_worker
-from forex.config import AppConfig, Secrets
+from forex.config import AppConfig, ExecutionConfig, Secrets
 from forex.context import ContextReviewer
-from forex.domain import Timeframe
+from forex.domain import Timeframe, _require_utc
 from forex.errors import OperatorError
 from forex.execution import ExecutionService, ExecutionStore
 from forex.journal import JournalStore
@@ -32,6 +33,22 @@ from forex.risk import DecisionStatus, PortfolioRiskState, evaluate_daily_risk
 from forex.risk import decide_risk as evaluate_candidate
 from forex.risk_policy import policy_from_config
 from forex.serialization import canonical_json, json_value
+
+
+def paper_session_id(now: datetime, config: ExecutionConfig) -> str:
+    """Label the risk day by its opening date; NY close follows US DST rules."""
+    _require_utc(now, "risk session timestamp")
+    if config.session_rollover is not None:
+        if config.session_rollover_hour_utc is not None:
+            raise OperatorError("Conflicting daily-risk boundaries; choose exactly one.")
+        local = now.astimezone(ZoneInfo("America/New_York"))
+        day = local.date() if local.hour >= 17 else local.date() - timedelta(days=1)
+        return "PAPER:NY17:" + day.isoformat()
+    hour = config.session_rollover_hour_utc
+    if hour is None:
+        raise OperatorError("Configure a daily-risk session boundary before paper operation.")
+    # Preserve existing fixed-UTC identities for previously configured databases.
+    return "PAPER:" + (now - timedelta(hours=hour)).date().isoformat()
 
 
 class RuntimeStore:
@@ -56,7 +73,7 @@ class RuntimeStore:
 class PaperRuntime:
     def __init__(self, config: AppConfig, feed: Broker, paper: PaperBroker,
                  reviewer: ContextReviewer, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
-        if config.mode != "paper" or config.execution.session_rollover_hour_utc is None:
+        if config.mode != "paper" or not config.execution.rollover_configured:
             raise OperatorError("Paper runtime requires paper mode and an explicit daily-risk rollover hour.")
         self.config, self.feed, self.paper, self.reviewer, self.clock = config, feed, paper, reviewer, clock
         self.policy = policy_from_config(config.risk)
@@ -79,9 +96,7 @@ class PaperRuntime:
         self.code_fingerprint = source.hexdigest()
 
     def session_id(self, now: datetime) -> str:
-        hour = self.config.execution.session_rollover_hour_utc
-        assert hour is not None
-        return "PAPER:" + (now - timedelta(hours=hour)).date().isoformat()
+        return paper_session_id(now, self.config.execution)
 
     def emit(self, kind: str, identity: str, payload: dict[str, Any], now: datetime) -> None:
         self.journal.append("PAPER", kind, identity, payload, now)

@@ -24,7 +24,9 @@ No auto-retry after a Codex usage reset is configured; a persistent development 
 notes preserve continuity while the session can run.
 
 Layer 7 follow-up:
-- [ ] Choose the UTC daily risk-session boundary; currently null and not guessed.
+- [x] Operator chose AUD 100 simulated balance and delegated the reset choice. Configured
+      17:00 America/New_York with automatic US DST, matching the published IC Markets day.
+      Paper and demo execution remain disabled; actual MT5 verification is next.
 - [ ] Verify broker order comments/IDs survive position/order/deal history and restarts.
 - [ ] Exercise actual demo partial/rejected/ambiguous orders, netting/hedging, fill modes and stops.
 - [ ] Decide emergency flatten scope for any manual positions; bot transport never closes them silently.

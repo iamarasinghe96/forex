@@ -106,7 +106,8 @@ execution:
   demo_enabled: false
   maximum_quote_age_seconds: 30
   maximum_decision_age_seconds: 300
-  session_rollover_hour_utc: null  # Operator must choose an explicit daily-risk boundary.
+  session_rollover_hour_utc: null  # Alternative fixed UTC boundary; exclusive with policy below.
+  session_rollover: new_york_close  # 17:00 America/New_York, with automatic US DST.
 
 # Layer 8 cloud mirror stays disabled until Firebase credentials/security setup is verified.
 # Retry/poll/batch limits are UNVALIDATED operational defaults.
@@ -123,7 +124,7 @@ cloud:
 paper:
   enabled: false
   database: data/paper.sqlite3
-  starting_balance_aud: null
+  starting_balance_aud: 100
   poll_seconds: 5
   history_days: 365
   heartbeat_file: data/paper-heartbeat.json
