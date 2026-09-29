@@ -198,6 +198,17 @@ class CloudConfig(BaseModel):
         return self
 
 
+class PaperConfig(BaseModel):
+    enabled: bool = False
+    database: Path = Path("data/paper.sqlite3")
+    starting_balance_aud: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    poll_seconds: float = Field(default=5, gt=0)
+    history_days: int = Field(default=365, ge=60)
+    heartbeat_file: Path = Path("data/paper-heartbeat.json")
+    halt_file: Path = Path("data/HALT_PAPER")
+    no_trade_hours: float = Field(default=168, gt=0)
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -212,6 +223,7 @@ class AppConfig(BaseModel):
     context: ContextConfig = Field(default_factory=lambda: ContextConfig())
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
+    paper: PaperConfig = Field(default_factory=PaperConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

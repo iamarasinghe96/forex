@@ -38,3 +38,6 @@ Layer 8 follow-up:
 
 ## Layer 9 dashboard
 Configure Firebase web app (public identifiers only), Google sign-in, authorized Pages domain and access/operator UID. Deploy and verify the deny-by-default Firestore rules using operator and unauthorized accounts before enabling Pages. Follow dashboard/README.md. Dashboard has no trading controls. Cloud authentication and deployed-rule checks remain NOT_RUN.
+
+## Layer 10 paper operation
+Follow docs/PAPER_OPERATIONS.md: choose simulated starting AUD balance and UTC daily-risk rollover, verify MT5 data, then explicitly enable paper. Configure scheduled startup/watchdog and optional phone/cloud credentials on the actual VPS. Run real elapsed soak and test outage/restart recovery. No soak, VPS integration or remote emergency endpoint has been verified. ATR trailing remains unconfigured; paper polling/cost limitations remain explicit.
