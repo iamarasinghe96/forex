@@ -428,6 +428,25 @@ def verify_paper(config_path: Path) -> int:
     return 0
 
 
+def verify_intelligence(config_path: Path) -> int:
+    from tempfile import TemporaryDirectory
+
+    from forex.intelligence import ExperimentRegistry
+
+    load_config(config_path)
+    with TemporaryDirectory(prefix="forex-intelligence-check-") as directory:
+        registry = ExperimentRegistry(Path(directory) / "fixture.sqlite3")
+        try:
+            registry.evaluate("unknown", datetime.now(UTC))
+        except ValueError:
+            pass
+        else:
+            raise OperatorError("Unknown research version was accepted. Keep promotion disabled.")
+    print(json.dumps({"layer": 11, "status": "UNKNOWN_VERSION_FAILS_CLOSED",
+                      "production_mutation": False, "promotion": "NO_CANDIDATE_VALIDATED"}))
+    return 0
+
+
 def run_paper(config_path: Path) -> int:
     from threading import Event
 
@@ -471,12 +490,18 @@ def main() -> None:
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
                             "import-history", "verify-history", "verify-context", "verify-execution",
-                            "verify-journal", "sync-journal", "run-paper", "verify-paper"]
+                            "verify-journal", "sync-journal", "run-paper", "verify-paper",
+                            "verify-intelligence", "diagnose", "experiment-propose",
+                            "experiment-attach", "experiment-status"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
     parser.add_argument("--file", type=Path)
     parser.add_argument("--dataset")
+    parser.add_argument("--version")
+    parser.add_argument("--registry", type=Path, default=Path("data/experiments.sqlite3"))
+    parser.add_argument("--start-utc", default="2000-01-01T00:00:00+00:00")
+    parser.add_argument("--end-utc")
     parser.add_argument("--provider")
     parser.add_argument("--symbol")
     parser.add_argument("--price-type", choices=["bid", "ask", "midpoint", "ohlc"])
@@ -485,6 +510,39 @@ def main() -> None:
     parser.add_argument("--h4-alignment-hour-utc", type=int, default=0)
     args = parser.parse_args()
     try:
+        if args.command in {"diagnose", "experiment-propose", "experiment-attach", "experiment-status"}:
+            from forex.intelligence import AcceptanceCriteria, ExperimentRegistry, diagnose
+            from forex.journal import JournalStore
+            from forex.serialization import canonical_json
+
+            config = load_config(args.config)
+            now = datetime.now(UTC)
+            try:
+                registry = ExperimentRegistry(args.registry)
+                if args.command in {"diagnose", "experiment-propose"}:
+                    diagnosis_report = diagnose(JournalStore(config.paper.database), "PAPER",
+                                      datetime.fromisoformat(args.start_utc),
+                                      datetime.fromisoformat(args.end_utc) if args.end_utc else now)
+                    if args.command == "diagnose":
+                        print(canonical_json(diagnosis_report))
+                    else:
+                        if args.file is None:
+                            parser.error("experiment-propose requires --file with hypothesis, parameters and criteria")
+                        proposal = json.loads(args.file.read_text(encoding="utf-8"))
+                        version = registry.propose(diagnosis_report, proposal["hypothesis"], proposal["parameters"],
+                                                   AcceptanceCriteria.model_validate(proposal["criteria"]), now)
+                        print(canonical_json({"version_hash": version, "production_action": "NONE"}))
+                else:
+                    if not args.version:
+                        parser.error("experiment command requires --version")
+                    if args.command == "experiment-attach":
+                        if args.file is None:
+                            parser.error("experiment-attach requires --file")
+                        registry.attach(args.version, args.file, now)
+                    print(canonical_json(registry.evaluate(args.version, now)))
+            except (OSError, ValueError, KeyError) as exc:
+                raise OperatorError(f"Research evidence command failed ({type(exc).__name__}). Check the report schema, hashes and UTC window; no production configuration changed.") from None
+            raise SystemExit(0)
         if args.command == "import-history":
             if not all((args.research_database, args.file, args.dataset, args.provider,
                         args.symbol, args.price_type)):
@@ -517,6 +575,7 @@ def main() -> None:
             "sync-journal": sync_journal,
             "run-paper": run_paper,
             "verify-paper": verify_paper,
+            "verify-intelligence": verify_intelligence,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",
