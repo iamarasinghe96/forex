@@ -117,3 +117,14 @@ cloud:
   batch_size: 50
   retry_base_seconds: 5
   retry_maximum_seconds: 300
+
+# Layer 10 stays disabled until explicit paper setup; never places MT5 orders.
+paper:
+  enabled: false
+  database: data/paper.sqlite3
+  starting_balance_aud: null
+  poll_seconds: 5
+  history_days: 365
+  heartbeat_file: data/paper-heartbeat.json
+  halt_file: data/HALT_PAPER
+  no_trade_hours: 168

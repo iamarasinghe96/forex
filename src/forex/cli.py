@@ -404,13 +404,74 @@ def sync_journal(config_path: Path) -> int:
     return 2 if result.failed else 0
 
 
+def verify_paper(config_path: Path) -> int:
+    from tempfile import TemporaryDirectory
+
+    from forex.journal import JournalStore
+    from forex.operations import SingleWriter, backup_database
+    from forex.runtime import RuntimeStore
+
+    config = load_config(config_path)
+    now = datetime.now(UTC)
+    with TemporaryDirectory(prefix="forex-paper-check-") as directory:
+        path = Path(directory) / "fixture.sqlite3"
+        journal = JournalStore(path)
+        journal.append("PAPER", "no_trade", "fixture", {"reason": "offline verification"}, now)
+        store = RuntimeStore(path)
+        if not store.claim("fixture", now) or RuntimeStore(path).claim("fixture", now):
+            raise OperatorError("Paper restart identity check failed. Keep runtime disabled.")
+        with SingleWriter(Path(directory) / "fixture.lock"):
+            backup_database(path, Path(directory) / "backup.sqlite3")
+    print(json.dumps({"layer": 10, "paper_enabled": config.paper.enabled,
+                      "status": "OFFLINE_STATE_AND_BACKUP_VERIFIED", "elapsed_soak": "NOT_RUN",
+                      "mt5": "NOT_CALLED"}))
+    return 0
+
+
+def run_paper(config_path: Path) -> int:
+    from threading import Event
+
+    from forex.context import ContextReviewer, ContextSecrets, ContextStore, HTTPContextProvider
+    from forex.paper import PaperBroker
+    from forex.runtime import PaperRuntime
+
+    config = load_config(config_path)
+    if (not config.paper.enabled or config.mode != "paper" or
+            config.paper.starting_balance_aud is None or
+            config.execution.session_rollover_hour_utc is None):
+        raise OperatorError("Paper runtime is disabled or incomplete. Configure starting balance and daily rollover, then explicitly enable paper mode. No broker order was sent.")
+    if config.paper.database.resolve() == config.database.path.resolve():
+        raise OperatorError("Use a separate paper database so simulated risk latches cannot affect broker execution.")
+    configure_logging(config)
+    from forex.operations import SingleWriter
+
+    with SingleWriter(config.paper.database.with_suffix(".lock")):
+        feed = MT5Broker(config.broker, Secrets().mt5_password)
+        try:
+            account = feed.connect()
+            feed.validate_server_clock(datetime.now(UTC), config.market_data.server_clock_tolerance_seconds)
+            paper = PaperBroker(config.paper.database, feed, account,
+                                Decimal(str(config.paper.starting_balance_aud)),
+                                config.execution.maximum_quote_age_seconds,
+                                Decimal(str(config.risk.tax_reserve_percent)))
+            reviewer = ContextReviewer(config.context, HTTPContextProvider(config.context, ContextSecrets()),
+                                       ContextStore(config.paper.database))
+            runtime = PaperRuntime(config, feed, paper, reviewer)
+            runtime.run(Event())
+        except KeyboardInterrupt:
+            logging.getLogger("forex.paper").info("Paper loop stopped by operator; positions retained for restart.")
+        finally:
+            feed.disconnect()
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
                             "import-history", "verify-history", "verify-context", "verify-execution",
-                            "verify-journal", "sync-journal"]
+                            "verify-journal", "sync-journal", "run-paper", "verify-paper"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -454,6 +515,8 @@ def main() -> None:
             "verify-execution": verify_execution,
             "verify-journal": verify_journal,
             "sync-journal": sync_journal,
+            "run-paper": run_paper,
+            "verify-paper": verify_paper,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",
