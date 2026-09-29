@@ -199,3 +199,15 @@ may be truncated/changed; if identity cannot be established, keep the submission
 Check Algo Trading for 10027; close-only 10044 is a broker restriction, not a Python error.
 The demo adapter is intentionally not wired to an automatic order CLI. Real-money transport is
 refused. Do not enable unattended broker execution before the full paper soak and manual checks.
+
+## Layer 8 sync recovery
+
+Run `.\.venv\Scripts\forex.exe verify-journal`. Cloud is deliberately disabled by default.
+An outage leaves journal events/outbox rows in SQLite. Restart the sync worker; do not delete
+records or rebuild trade state from Firestore. A failed cloud write may already have succeeded:
+retry uses the same document ID. Reconcile remote hashes in bounded pages and requeue divergence.
+Back up SQLite with its backup API rather than copying a live WAL database file.
+
+Before enabling cloud: configure a Firebase project, create the operator Auth UID, deploy/review
+rules and indexes, create `access/operator` with that UID using Admin privileges, and run allowed-
+UID/other-UID/anonymous/write-denial emulator tests. Keep the service-account file on the VPS.

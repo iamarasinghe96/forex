@@ -181,6 +181,23 @@ class ExecutionConfig(BaseModel):
     session_rollover_hour_utc: int | None = Field(default=None, ge=0, le=23)
 
 
+class CloudConfig(BaseModel):
+    enabled: bool = False
+    project_id: str = ""
+    poll_seconds: float = Field(default=10, gt=0)
+    batch_size: int = Field(default=50, ge=1, le=500)
+    retry_base_seconds: float = Field(default=5, gt=0)
+    retry_maximum_seconds: float = Field(default=300, gt=0)
+
+    @model_validator(mode="after")
+    def valid_cloud(self) -> CloudConfig:
+        if self.enabled and not self.project_id.strip():
+            raise ValueError("enabled cloud mirror requires a Firebase project ID")
+        if self.retry_base_seconds > self.retry_maximum_seconds:
+            raise ValueError("cloud retry base cannot exceed maximum")
+        return self
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -194,6 +211,7 @@ class AppConfig(BaseModel):
     risk: RiskConfig
     context: ContextConfig = Field(default_factory=lambda: ContextConfig())
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    cloud: CloudConfig = Field(default_factory=CloudConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

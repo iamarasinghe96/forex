@@ -249,3 +249,31 @@ MT5 protocol references (not market assumptions):
 - https://www.mql5.com/en/docs/python_metatrader5/mt5ordersend_py
 - https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
 - https://www.mql5.com/en/docs/constants/errorswarnings/enum_trade_return_codes
+
+## Layer 8 journal, attribution and cloud mirror
+
+`forex verify-journal` checks the local journal/outbox using a disposable offline fixture.
+Every candidate, no-trade, analytical rejection, hard risk block, context verdict, execution and
+outcome can be retained with complete structured provenance. Caller-supplied stable identities
+must include run/version identity. Duplicate payloads are idempotent; conflicting facts under
+one identity are rejected. Local event, aggregate, reserve-ledger and outbox writes are atomic.
+Cloud failure is handled by a separate worker with persistent retry state. Repeated delivery
+uses deterministic document IDs; reconciliation requeues missing or mismatched cloud events.
+
+PAPER and DEMO records/aggregates are separate. The configurable profit reserve is an exact
+accounting estimate on positive realized P&L, not a tax determination. Negative outcomes accrue
+zero new reserve. CSV export retains the full audit payload and neutralizes spreadsheet-formula
+prefixes. No account/cost metric is silently inferred from normalized research R.
+
+Attribution produces multiple evidence-referenced observations. It separates hard risk blocks,
+analytical no-candidate states, ambiguous paths, recorded stop exits and observed regime changes.
+Observations are not causal proof, probabilities are not invented, and attribution cannot
+change risk/strategy or block trading. Later learning must test hypotheses separately.
+
+The optional Firestore Admin mirror writes immutable event IDs and precomputed all-time/daily
+aggregates in batches. It is not called on the decision path. Install Firebase Admin only when
+enabling this integration, configure project/credential path locally, and follow OPERATOR_SETUP.md.
+`firestore.rules` denies all browser writes and grants PAPER/DEMO reads only to the authenticated
+UID in the Admin-created `access/operator` document. Missing configuration denies access.
+The Admin SDK bypasses client rules; its credential stays on the VPS and needs IAM controls.
+Rules/emulator/cloud deployment remain unverified until their explicit checks run.

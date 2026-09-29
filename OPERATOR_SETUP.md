@@ -28,3 +28,10 @@ Layer 7 follow-up:
 - [ ] Exercise actual demo partial/rejected/ambiguous orders, netting/hedging, fill modes and stops.
 - [ ] Decide emergency flatten scope for any manual positions; bot transport never closes them silently.
 - [ ] Verify stop/close read-back before retrying any ambiguous management action.
+
+Layer 8 follow-up:
+- [ ] Install optional Firebase Admin SDK and configure the local credential-file environment variable.
+- [ ] Deploy reviewed rules/indexes; create Admin-only access/operator with the approved Auth UID.
+- [ ] Run security-rule emulator tests and confirm unauthorized reads and all browser writes fail.
+- [ ] Exercise outage/reconnect and local/cloud divergence recovery with the actual project.
+- [ ] Review reserve-ledger treatment and export with the operator's accountant; no tax classification is asserted.

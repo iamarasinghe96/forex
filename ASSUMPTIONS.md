@@ -160,3 +160,5 @@ published MetaQuotes protocol. Demo transport and server-clock behavior require 
 verification. Exactly-once submission cannot be proven over an ambiguous broker connection;
 unknown outcomes remain blocked and are never automatically retried. Stop/close management
 requires read-back reconciliation before retry. No real-money execution is implemented.
+
+Cloud sync polling/batch/retry defaults are operational starting values, not measured broker or strategy parameters. Reserve is an accounting estimate; it does not determine tax liability.
