@@ -21,3 +21,10 @@ Do not put credentials in this file, Git, a chat message, screenshots or logs.
 
 No auto-retry after a Codex usage reset is configured; a persistent development goal and progress
 notes preserve continuity while the session can run.
+
+Layer 7 follow-up:
+- [ ] Choose the UTC daily risk-session boundary; currently null and not guessed.
+- [ ] Verify broker order comments/IDs survive position/order/deal history and restarts.
+- [ ] Exercise actual demo partial/rejected/ambiguous orders, netting/hedging, fill modes and stops.
+- [ ] Decide emergency flatten scope for any manual positions; bot transport never closes them silently.
+- [ ] Verify stop/close read-back before retrying any ambiguous management action.

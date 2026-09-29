@@ -221,3 +221,31 @@ Provider wire formats were checked against official documentation:
 
 The JSON request mode does not replace local schema validation. Current review/cache work is
 single-worker; concurrent paid-call deduplication is not claimed.
+
+## Layer 7 durable execution and reconciliation
+
+`forex verify-execution` checks reservation/restart behavior in a disposable offline fixture.
+It never connects to MT5. The execution service rechecks fresh quotes, broker portfolio and
+Layer 5 risk after Layer 6 review, and respects both reviewed volume and money-risk ceilings.
+A unique account/candidate identity is reserved transactionally before submission. Only one
+unresolved submission may be in flight; unknown results block subsequent entries. Startup
+reconciliation uses broker positions, orders and deals. Absent history is not proof of rejection
+and never permits an automatic resend. Partial fills are reconciled, not topped up automatically.
+
+The separate MT5ExecutionBroker is disabled by default and refuses all real-money accounts.
+Its base MT5Broker stays read-only. The guarded demo transport checks runtime account/symbol/
+volume/stop/freeze constraints, handles filling flags correctly, and retries filling mode only
+after a definitive unsupported-fill rejection. It never retries an ambiguous order response.
+Protective modifications cannot loosen stops; closing explicitly names a current bot ticket.
+Manual positions are included in portfolio risk but never silently modified/closed. An existing
+netting position on the symbol blocks a new entry pending explicit reconciliation.
+
+Demo/network/retcode behavior remains unverified outside mocks. Quote changes between risk
+calculation and submission are rejected; slippage tolerance is not guessed. The operator must
+choose the daily session boundary before an unattended runtime. Flattening manual positions
+requires a separate explicit scope decision; this transport manages bot positions only.
+
+MT5 protocol references (not market assumptions):
+- https://www.mql5.com/en/docs/python_metatrader5/mt5ordersend_py
+- https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
+- https://www.mql5.com/en/docs/constants/errorswarnings/enum_trade_return_codes

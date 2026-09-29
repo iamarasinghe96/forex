@@ -174,6 +174,13 @@ class ContextConfig(BaseModel):
         return self
 
 
+class ExecutionConfig(BaseModel):
+    demo_enabled: bool = False
+    maximum_quote_age_seconds: float = Field(default=30, gt=0)
+    maximum_decision_age_seconds: float = Field(default=300, gt=0)
+    session_rollover_hour_utc: int | None = Field(default=None, ge=0, le=23)
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -186,6 +193,7 @@ class AppConfig(BaseModel):
     telegram: TelegramConfig
     risk: RiskConfig
     context: ContextConfig = Field(default_factory=lambda: ContextConfig())
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

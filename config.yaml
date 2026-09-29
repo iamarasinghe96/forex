@@ -100,3 +100,10 @@ risk:
   conviction_risk_percent: {low: 2.0, medium: 3.5, high: 5.0}
   conviction_thresholds: {minimum: 55, medium: 70, high: 85}  # UNVALIDATED operator policy.
   target_trades_per_week: {minimum: 3, maximum: 8}
+
+# Layer 7 operational defaults (UNVALIDATED). No command enables broker execution.
+execution:
+  demo_enabled: false
+  maximum_quote_age_seconds: 30
+  maximum_decision_age_seconds: 300
+  session_rollover_hour_utc: null  # Operator must choose an explicit daily-risk boundary.

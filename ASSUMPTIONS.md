@@ -151,3 +151,12 @@ Context timeout (15s), retry count (2), backoff (1s exponential), and output tok
 are configurable UNVALIDATED operational defaults, not observed market/strategy constants.
 All providers/models/credentials are unverified until configured. Missing cost reporting is
 UNAVAILABLE, not free usage. Context input must contain genuine evidence; no news is fabricated.
+
+## Layer 7 assumptions and limits
+
+Fresh quote age 30s and decision age 300s are UNVALIDATED operational defaults in config.yaml.
+Daily rollover hour is deliberately unconfigured. MT5 return codes and filling flags use the
+published MetaQuotes protocol. Demo transport and server-clock behavior require actual broker
+verification. Exactly-once submission cannot be proven over an ambiguous broker connection;
+unknown outcomes remain blocked and are never automatically retried. Stop/close management
+requires read-back reconciliation before retry. No real-money execution is implemented.

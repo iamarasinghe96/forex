@@ -28,3 +28,11 @@ A persistent Codex goal is active. This session exposes no automation scheduling
 No automatic hourly-reset retry has been configured or verified; usage reset timing is not known.
 Do not launch concurrent writers or claim that scheduling exists. Resume from this file and GitHub
 branches/PRs, check working-tree changes first, and preserve all uncommitted work.
+
+Layer 7 checkpoint: implemented offline-verified execution service and guarded demo-only MT5
+transport on codex/layer7-execution. 126 pytest tests passed; Ruff/mypy clean; verify-execution
+passed with no broker calls. Includes restart-safe reservations, ambiguity/reconciliation,
+fresh-risk rechecks, review identity/ceiling binding, runtime constraints, filling modes,
+monotonic stop changes, bot-ticket closes and non-clearing equity observations. SQLite handles
+are now closed explicitly on Windows. External broker verification remains pending.
+Next: Layer 8 full decision journal/attribution, tax evidence and asynchronous Firestore mirror.

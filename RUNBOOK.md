@@ -189,3 +189,13 @@ Configure model IDs and local FOREX_GROQ_API_KEY, FOREX_GEMINI_API_KEY,
 FOREX_OPENROUTER_API_KEY only when ready. Never paste the keys into chat. An all-provider
 failure is deterministic-only degradation; it cannot unblock a Layer 5 rejection. The future
 runtime must recheck live risk/state after a potentially slow review before any execution.
+
+## Layer 7 recovery
+
+Run `.\.venv\Scripts\forex.exe verify-execution` for an offline check. Success does not verify
+MT5. UNKNOWN/IN_FLIGHT means an order may already exist: reconnect, query positions/orders/deals,
+and reconcile. Never delete its record or resend it because the response was lost. Broker comments
+may be truncated/changed; if identity cannot be established, keep the submission blocked for review.
+Check Algo Trading for 10027; close-only 10044 is a broker restriction, not a Python error.
+The demo adapter is intentionally not wired to an automatic order CLI. Real-money transport is
+refused. Do not enable unattended broker execution before the full paper soak and manual checks.
