@@ -195,3 +195,29 @@ makes formal validation eligible; it does not validate the strategy or relax any
 Research replay first verifies provenance and writes `research-baseline-<fingerprint>.json`, leaving
 the broker-native baseline untouched. The report binds results to the release/provider, symbols,
 source hashes, semantics, alignment, coverage, and deterministic dataset fingerprint.
+
+## Layer 6 constrained context review
+
+`forex verify-context` validates the local prompt/configuration/JSON contract without a paid
+provider call or MT5 connection. Context is disabled by default; set actual provider model IDs
+and local .env keys before enabling it. No provider/free-tier/cost assumptions are fabricated.
+
+The review accepts only approve/reject/reduce_size, a volume fraction, rationale and references
+to supplied evidence. It cannot modify prices, stops, objectives, policy or strategy parameters.
+Risk blocks bypass providers entirely. Reductions floor to the broker step and below-minimum
+size is non-actionable. Missing context preserves the original eligible Layer 5 allowance.
+
+Provider timeout/rate/error/malformed/schema failures retry with bounded backoff then fail over
+in configured order. All-failed results request an operator alert and remain deterministic-only.
+SQLite records every attempt, observed token counts/reported cost, and validated cached responses.
+Unknown billed amounts remain unavailable. Cache identity binds prompt content, provider/model
+order, market/evidence payload and risk decision. Prompts are versioned files and never promote
+parameters. External provider verification is deferred in OPERATOR_SETUP.md.
+
+Provider wire formats were checked against official documentation:
+- https://console.groq.com/docs/structured-outputs
+- https://ai.google.dev/gemini-api/docs/openai
+- https://openrouter.ai/docs/api/reference/overview
+
+The JSON request mode does not replace local schema validation. Current review/cache work is
+single-worker; concurrent paid-call deduplication is not claimed.

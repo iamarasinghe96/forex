@@ -180,3 +180,12 @@ Import is atomic across H1, H4 and provenance. Re-importing the same bytes and m
 retains the first import timestamp; metadata conflicts fail. `verify-history` refuses missing or mixed
 provenance, and research replay produces a fingerprinted report rather than replacing
 `strategy-baseline.json`.
+
+## Layer 6 local verification
+
+Run `.\.venv\Scripts\forex.exe verify-context`. Expected local status is
+LOCAL_CONFIGURATION_AND_SCHEMA_VERIFIED with external_provider_verification NOT_RUN.
+Configure model IDs and local FOREX_GROQ_API_KEY, FOREX_GEMINI_API_KEY,
+FOREX_OPENROUTER_API_KEY only when ready. Never paste the keys into chat. An all-provider
+failure is deterministic-only degradation; it cannot unblock a Layer 5 rejection. The future
+runtime must recheck live risk/state after a potentially slow review before any execution.

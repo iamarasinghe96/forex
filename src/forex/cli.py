@@ -324,12 +324,31 @@ def verify_risk(config_path: Path) -> int:
             broker.disconnect()
 
 
+def verify_context(config_path: Path) -> int:
+    """Verify local review configuration/schema without calling paid providers."""
+    from forex.context import ReviewResponse
+
+    config = load_config(config_path)
+    prompt = config.context.prompt_file.read_text(encoding="utf-8")
+    if not prompt.strip():
+        raise OperatorError("Context prompt is empty. Restore the versioned prompt file.")
+    ReviewResponse.model_validate_json(
+        '{"verdict":"approve","volume_fraction":"1","rationale":"Offline schema check"}'
+    )
+    print(json.dumps({"layer": 6, "mode": config.mode.upper(),
+                      "context_enabled": config.context.enabled,
+                      "providers": [p.model_dump() for p in config.context.providers],
+                      "external_provider_verification": "NOT_RUN",
+                      "status": "LOCAL_CONFIGURATION_AND_SCHEMA_VERIFIED"}, indent=2))
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
-                            "import-history", "verify-history"]
+                            "import-history", "verify-history", "verify-context"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -369,6 +388,7 @@ def main() -> None:
             "verify-backtest": verify_backtest,
             "validate-backtest": full_validation,
             "verify-risk": verify_risk,
+            "verify-context": verify_context,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",

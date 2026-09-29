@@ -144,3 +144,10 @@ backtester, optimizer, risk/fusion, LLM, execution, journal persistence, paper r
 - Candle and provenance writes share one transaction. A research database is homogeneous in provider,
   release, price/time/alignment, spread and volume semantics; incompatible sources require another
   database. Research reports include a deterministic provenance fingerprint and use a distinct file.
+
+## Layer 6 operational assumptions
+
+Context timeout (15s), retry count (2), backoff (1s exponential), and output token cap (1500)
+are configurable UNVALIDATED operational defaults, not observed market/strategy constants.
+All providers/models/credentials are unverified until configured. Missing cost reporting is
+UNAVAILABLE, not free usage. Context input must contain genuine evidence; no news is fabricated.

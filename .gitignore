@@ -7,6 +7,8 @@ __pycache__/
 .ruff_cache/
 data/
 logs/
+work/
+reports/backtest/
 *.db
 *.sqlite*
 service-account*.json
