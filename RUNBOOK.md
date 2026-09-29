@@ -222,3 +222,5 @@ UID/other-UID/anonymous/write-denial emulator tests. Keep the service-account fi
 Use forex walk-forward-research --research-database data/dukascopy-research.sqlite3 for actual fixed-baseline fold runs; output reports remain local/ignored. Final holdout is not evaluated. This command does not establish realistic costs, broker H4 equivalence or strategy validity.
 Use forex reconcile-journal after configured cloud outages to compare event fingerprints and all/day aggregates, requeue divergence and deliver one configured batch. Repeat sync-journal until drained. Only one local sync batch may write at a time. In paper mode these commands use the separate paper database.
 Local emulator security tests passed; actual deployed Auth/IAM/rules and emergency admin-console halt delivery require external verification.
+
+The Python mirror can be verified against the local demo emulator with scripts/verify_firestore_mirror.py. It refuses non-local emulator settings and uses anonymous demo credentials. Verified delivery, aggregate repair and the PAPER halt latch locally; never point this verification at a real project.
