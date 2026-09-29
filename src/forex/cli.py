@@ -368,12 +368,49 @@ def verify_execution(config_path: Path) -> int:
     return 0
 
 
+def verify_journal(config_path: Path) -> int:
+    """Check atomic local audit persistence in a disposable offline database."""
+    from tempfile import TemporaryDirectory
+
+    from forex.journal import JournalStore
+
+    config = load_config(config_path)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with TemporaryDirectory(prefix="forex-journal-check-") as directory:
+        journal = JournalStore(Path(directory) / "fixture.sqlite3")
+        event = journal.append("PAPER", "no_trade", "offline-fixture", {"reason": "fixture"}, now)
+        if journal.append("PAPER", "no_trade", "offline-fixture", event.payload, now) != event:
+            raise OperatorError("Journal idempotency failed. Stop and preserve the database for review.")
+        if len(journal.pending(now, 10)) != 1 or journal.summary("PAPER")["event_count"] != 1:
+            raise OperatorError("Journal/outbox verification failed. Do not enable the runtime.")
+    print(json.dumps({"layer": 8, "mode": config.mode.upper(),
+                      "status": "LOCAL_JOURNAL_AND_OUTBOX_VERIFIED",
+                      "cloud_enabled": config.cloud.enabled, "firestore_verification": "NOT_RUN"}))
+    return 0
+
+
+def sync_journal(config_path: Path) -> int:
+    """Deliver one configured cloud batch; disabled configuration performs no network I/O."""
+    from forex.cloud_sync import configured_worker
+    from forex.journal import JournalStore
+
+    config = load_config(config_path)
+    worker = configured_worker(config.cloud, JournalStore(config.database.path))
+    if worker is None:
+        print("Cloud mirror disabled. Local records retained; no cloud request was made.")
+        return 0
+    result = worker.sync_once(datetime.now(UTC), config.cloud.batch_size)
+    print(json.dumps(asdict(result)))
+    return 2 if result.failed else 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
-                            "import-history", "verify-history", "verify-context", "verify-execution"]
+                            "import-history", "verify-history", "verify-context", "verify-execution",
+                            "verify-journal", "sync-journal"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
@@ -415,6 +452,8 @@ def main() -> None:
             "verify-risk": verify_risk,
             "verify-context": verify_context,
             "verify-execution": verify_execution,
+            "verify-journal": verify_journal,
+            "sync-journal": sync_journal,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",

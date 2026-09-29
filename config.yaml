@@ -107,3 +107,13 @@ execution:
   maximum_quote_age_seconds: 30
   maximum_decision_age_seconds: 300
   session_rollover_hour_utc: null  # Operator must choose an explicit daily-risk boundary.
+
+# Layer 8 cloud mirror stays disabled until Firebase credentials/security setup is verified.
+# Retry/poll/batch limits are UNVALIDATED operational defaults.
+cloud:
+  enabled: false
+  project_id: ""
+  poll_seconds: 10
+  batch_size: 50
+  retry_base_seconds: 5
+  retry_maximum_seconds: 300

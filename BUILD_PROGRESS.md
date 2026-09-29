@@ -36,3 +36,6 @@ fresh-risk rechecks, review identity/ceiling binding, runtime constraints, filli
 monotonic stop changes, bot-ticket closes and non-clearing equity observations. SQLite handles
 are now closed explicitly on Windows. External broker verification remains pending.
 Next: Layer 8 full decision journal/attribution, tax evidence and asynchronous Firestore mirror.
+
+Layer 8 checkpoint: transactional full-state journal, reserve ledger, evidence attribution, CSV export and persistent asynchronous Firestore outbox implemented. Optional Firebase SDK installed; cloud credentials/rules deployment and external verification remain pending. Continue Layer 9 read-only dashboard after tests/commit.
+Validation: 133 pytest tests passed; Ruff clean; mypy clean (25 source files). Layer 8 ready for draft review. Active next work: Layer 9.

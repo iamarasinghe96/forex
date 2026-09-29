@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {"collectionGroup": "events", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "kind", "order": "ASCENDING"},
+      {"fieldPath": "observed_at_utc", "order": "DESCENDING"}
+    ]},
+    {"collectionGroup": "events", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "payload.symbol", "order": "ASCENDING"},
+      {"fieldPath": "observed_at_utc", "order": "DESCENDING"}
+    ]}
+  ],
+  "fieldOverrides": []
+}
