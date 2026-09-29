@@ -151,6 +151,29 @@ class RiskConfig(BaseModel):
         return self
 
 
+class ContextProviderConfig(BaseModel):
+    name: Literal["groq", "gemini", "openrouter"]
+    model: str = ""  # Operator selects an available JSON-capable model; no guessed model ID.
+
+
+class ContextConfig(BaseModel):
+    enabled: bool = False
+    providers: list[ContextProviderConfig] = Field(default_factory=list)
+    timeout_seconds: float = Field(default=15, gt=0, le=120)
+    attempts_per_provider: int = Field(default=2, ge=1, le=5)
+    retry_backoff_seconds: float = Field(default=1, ge=0, le=30)
+    max_output_tokens: int = Field(default=1500, ge=100, le=10000)
+    prompt_file: Path = Path("src/forex/prompts/context-review-v1.md")
+
+    @model_validator(mode="after")
+    def configured_when_enabled(self) -> ContextConfig:
+        if self.enabled and (not self.providers or any(not p.model.strip() for p in self.providers)):
+            raise ValueError("enabled context requires provider model IDs; configure them first")
+        if len({p.name for p in self.providers}) != len(self.providers):
+            raise ValueError("context provider names must be unique")
+        return self
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -162,6 +185,7 @@ class AppConfig(BaseModel):
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     telegram: TelegramConfig
     risk: RiskConfig
+    context: ContextConfig = Field(default_factory=lambda: ContextConfig())
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

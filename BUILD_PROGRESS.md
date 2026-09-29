@@ -1,0 +1,30 @@
+# Build progress and resumption
+
+User authorization: continue building through Layer 11 without routine interruptions;
+leave credential/manual setup placeholders disabled and record the final operator checklist.
+Do not merge semantic/architecture changes or place real orders. Existing guardrails in
+PROJECT_CONTEXT.md remain authoritative. Do not fabricate costs, broker checks or soak evidence.
+
+## Completed in this work session
+- All three Dukascopy pairs imported/verified with original hashes and no data committed.
+- Layer 4 pre-holdout research completed using draft PRs #9/#10. Gross expectancy R:
+  EURUSD -0.06453886285315559; GBPUSD -0.07469902592687842; USDJPY 0.001297812487040083.
+- Final holdout begins 2025-09-28T16:00:00Z; parameters remain UNVALIDATED.
+- PR #9: CLI holdout correction. PR #10: exact replay performance. Neither merged.
+- PR #11: requirements/guardrails reconciliation, not merged.
+
+## Active
+Layer 6 implemented on codex/layer6-context, based on documentation branch. 112 tests passed; Ruff/mypy clean; verify-context passed offline. Providers remain disabled. Next: Layer 7 execution/reconciliation.
+Implement constrained JSON review, provider abstraction/failover, persistent response cache,
+cost/attempt ledger and offline verification. Then continue Layers 7–11 and deployment tools.
+Each layer needs independent tests, Ruff/mypy, a runnable verification command, docs and draft PR.
+
+## Remaining manual/external evidence
+Track details in OPERATOR_SETUP.md as implementation progresses. No actual provider credentials,
+Firestore/Auth/Vercel setup, MT5 execution verification or VPS soak has been completed here.
+
+## Continuation
+A persistent Codex goal is active. This session exposes no automation scheduling tool.
+No automatic hourly-reset retry has been configured or verified; usage reset timing is not known.
+Do not launch concurrent writers or claim that scheduling exists. Resume from this file and GitHub
+branches/PRs, check working-tree changes first, and preserve all uncommitted work.

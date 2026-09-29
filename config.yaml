@@ -74,6 +74,20 @@ telegram:
   enabled: false
   timeout_seconds: 10
 
+# Layer 6: disabled until local keys and current JSON-capable model IDs are configured.
+# Timeouts/retries/token caps are UNVALIDATED operational limits, not strategy parameters.
+context:
+  enabled: false
+  providers:
+    - {name: groq, model: ""}
+    - {name: gemini, model: ""}
+    - {name: openrouter, model: ""}
+  timeout_seconds: 15
+  attempts_per_provider: 2
+  retry_backoff_seconds: 1
+  max_output_tokens: 1500
+  prompt_file: src/forex/prompts/context-review-v1.md
+
 # Reserved risk profile; implemented in Layer 5, not used to place orders in Layer 1.
 risk:
   max_leverage: 30
