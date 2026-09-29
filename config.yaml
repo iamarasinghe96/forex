@@ -79,9 +79,9 @@ telegram:
 context:
   enabled: false
   providers:
-    - {name: groq, model: ""}
-    - {name: gemini, model: ""}
-    - {name: openrouter, model: ""}
+    - {name: groq, model: "openai/gpt-oss-120b"}
+    - {name: gemini, model: "gemini-3.1-flash-lite"}
+    - {name: openrouter, model: "google/gemma-4-31b-it:free"}  # Key valid; setup response rate-limited (429).
   timeout_seconds: 15
   attempts_per_provider: 2
   retry_backoff_seconds: 1
@@ -114,7 +114,7 @@ execution:
 cloud:
   enabled: false
   emergency_halt_enabled: false
-  project_id: ""
+  project_id: "forex-paper-bot"
   poll_seconds: 10
   batch_size: 50
   retry_base_seconds: 5

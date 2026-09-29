@@ -118,7 +118,7 @@ C:/Users/Indika/Documents/Codex/2026-09-29/referenced-chatgpt-conversation-this-
 Files: FOREX_BUILD_HANDOFF.md, WALK_FORWARD_RESULTS.md, walk-forward-summary.json, and the
 three full walk-forward reports. Historical baseline evidence is retained separately.
 
-## Setup continuation — 30 September 2026
+## Setup continuation ï¿½ 30 September 2026
 
 Operator selected AUD 100 virtual starting balance and delegated the reset time based on
 industry practice. Config now uses 17:00 America/New_York, matching IC Markets published
@@ -130,3 +130,44 @@ demo account; credentials stay local. Then perform read-only account/quote/spec 
 
 Setup verification: full suite 180 passed, including winter/summer and both US DST transition
 days; Ruff and mypy clean after an explicit naive-timestamp test fixture adjustment.
+
+MT5 setup check (30 September Sydney): installed the optional MT5 Python connector in the
+project venv. Read-only connection to the configured ICMarketsAU-Demo account succeeded:
+AUD, 1:30, hedging, broker demo balance AUD 200 (separate paper balance remains AUD 100).
+All three symbols returned fresh ticks consistent with the existing server-clock conversion.
+However, all three report SYMBOL_TRADE_MODE_CLOSEONLY (3); full-entry permission is not
+verified and paper entry checks will block them. Terminal Algo Trading is off. No orders
+were sent or settings changed. Local evidence: work/mt5-setup-check.json. Resolve broker
+symbol close-only restriction before enabling the runtime; toolbar Algo Trading does not
+remove a broker-side close-only restriction. External execution tests remain NOT_RUN.
+
+Operator reports login/symbol/new-demo troubleshooting did not resolve close-only and support is offline. Drafting a support email for the operator to send; no email sent by agent. Continue AI provider and Firebase setup while awaiting IC Markets. Local .env provider fields prepared without exposing existing values. Trading remains disabled.
+
+Firebase PC setup: operator explicitly chose local PC credential storage in ignored .secrets. Credential parsed successfully without disclosure. Actual authenticated Firestore metadata read succeeded for forex-paper-bot, default database, STANDARD/FIRESTORE_NATIVE, australia-southeast1. The access/operator document does not exist yet (404). Project ID recorded in config; cloud and trading remain disabled. Next: enable Google Authentication, register dashboard web app, bind verified operator UID and verify deployed rules before enabling sync. No live cloud writes have been performed.
+
+Firebase Google sign-in verified enabled through Admin API. Registered Forex Paper Dashboard web app in existing forex-paper-bot project; saved only public web config in ignored dashboard/.env.local. localhost is already an authorized Auth domain. Local dashboard started at http://localhost:5173 for operator first sign-in. Operator UID not yet bound, deployed operator rules not yet verified, and cloud sync/paper execution remain disabled. Next: user signs in, identifies the intended Google account, then bind that verified Firebase UID and complete authorization checks.
+
+Confirmed operator email authorized by user. access/operator now binds its verified Google UID. Deployed firestore.rules to forex-paper-bot and read back exact source/release match. Actual client-token REST checks all 12 passed: operator PAPER/DEMO reads allowed, LIVE denied; authenticated other user and signed-out reads denied; writes denied for all three. Temporary test Auth user deleted. Evidence: work/firebase-access-deployment.json and work/firebase-live-access-check.json; no tokens persisted. Dashboard remains local at localhost:5173; cloud sync/trading disabled, no trading data yet. User can refresh and sign in to view empty dashboard.
+
+
+## Current handoff checkpoint â€” follow this over older setup notes
+
+User is approaching weekly usage limit and requested a Claude Code handover. VPS path is
+C:/forex, explicitly confirmed. Detailed current state and ordered next steps are in
+docs/CLAUDE_CODE_HANDOVER.md and the task output CLAUDE_CODE_HANDOVER.md. Older lines above
+about missing Firebase operator setup are historical: operator is now bound and deployed
+client access checks passed12/12. Firebase Admin isolated write/read/delete also passed;
+real journal mirror outage/recovery remains unverified.
+
+PC AI credential checks: Groq/Gemini/OpenRouter authenticated. Synthetic structured
+responses passed Groq openai/gpt-oss-120b and Gemini gemini-3.1-flash-lite. OpenRouter
+selected google/gemma-4-31b-it:free returned HTTP429; fallback not verified. Model values
+saved, context still disabled. Telegram getMe and one PAPER setup send succeeded; actual
+phone receipt not yet confirmed. No passwords/tokens printed or stored in handover.
+
+Added scripts/vps-preflight.ps1 (read-only); PowerShell syntax and current config validation
+passed. All integration/run flags remain disabled. No VPS access, installation, scheduled
+tasks, broker restriction resolution, runtime start or seven-day soak completed. Full suite
+remains180passed from preceding runtime change; subsequent edits are setup/docs/preflight.
+User explicitly authorized PC credential setup; later transfer must adapt paths to C:/forex.
+Main remains unchanged; PR18 draft is not merge-approved. Preserve local PC.env user values.
