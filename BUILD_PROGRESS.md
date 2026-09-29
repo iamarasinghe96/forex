@@ -39,3 +39,5 @@ Next: Layer 8 full decision journal/attribution, tax evidence and asynchronous F
 
 Layer 8 checkpoint: transactional full-state journal, reserve ledger, evidence attribution, CSV export and persistent asynchronous Firestore outbox implemented. Optional Firebase SDK installed; cloud credentials/rules deployment and external verification remain pending. Continue Layer 9 read-only dashboard after tests/commit.
 Validation: 133 pytest tests passed; Ruff clean; mypy clean (25 source files). Layer 8 ready for draft review. Active next work: Layer 9.
+
+Layer 9 checkpoint: read-only mobile dashboard implemented with Firebase Auth, precomputed all-time cards, paginated decision history, rejected/no-trade evidence, subset filters/performance, equity observations, reserve FY grouping and safe CSV exports. Six model tests and one real Edge mobile setup test passed; production build passed. Dependencies audited with zero vulnerabilities. External Firebase auth/rules/Pages not configured or claimed verified. Next: Layer 10 durable paper runtime and failure/soak tooling.
