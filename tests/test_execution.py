@@ -149,3 +149,23 @@ def test_stale_or_future_candidate_cannot_submit(tmp_path: Path, days: int) -> N
     reviewed = apply_review(decision, ReviewResponse.model_validate_json(response()), spec())
     changed = replace(candidate(), evaluation_time_utc=NOW + timedelta(days=days))
     assert runner.execute(changed, decision, reviewed, NOW, "day", Decimal(10000)).state == "BLOCKED"
+
+
+@pytest.mark.parametrize("ask", ["1.10", "1.10001", "1.10050", "1.09990"])
+def test_runtime_style_decision_survives_small_price_moves_during_review(tmp_path: Path, ask: str) -> None:
+    from forex.risk import PortfolioRiskState, decide_risk
+
+    # The paper runtime evaluates candidates with no requested objective (minimum 1.5R target).
+    decision = decide_risk(candidate(), account(), spec(), Decimal("1.10"), Decimal("1.09"), None,
+                           PortfolioRiskState(()), DailyRiskState("day", Decimal(10000), Decimal(10000)), POLICY)
+    broker = FakeExecutionBroker()
+    broker.ask = Decimal(ask)
+    runner = service(tmp_path, broker)
+    reviewed = apply_review(decision, ReviewResponse.model_validate_json(response()), spec())
+    record = runner.execute(candidate(), decision, reviewed, NOW, "day", Decimal(10000))
+    assert record.state == "ACCEPTED", record.detail
+    intent = broker.calls[0]
+    assert reviewed.plan
+    loss = (intent.entry - intent.stop) / spec().tick_size * spec().tick_value * intent.volume
+    assert loss <= reviewed.plan.actual_risk_amount
+    assert (intent.target - intent.entry) / (intent.entry - intent.stop) >= POLICY.minimum_reward_risk

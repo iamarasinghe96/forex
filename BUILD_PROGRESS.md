@@ -318,3 +318,15 @@ USDJPY candidate passed risk, Groq review VALID, execution recorded but no simul
 was stored (reason to be read from the execution event). Paper balance AUD 100, no positions.
 Test runs write warnings into the production logs/forex.jsonl (cosmetic; not changed).
 192 passed, Ruff clean; PowerShell 7 parse check of all scripts clean.
+
+Restarted on 906f682 at 2026-09-30T02:00:10Z: heartbeat fresh, entry-blocked [], balance AUD 100,
+Firestore delivered 99 / waiting 0 / no errors (stuck risk_decision delivered after the fix).
+The 01:07Z USDJPY attempt was BLOCKED by the fresh Layer 5 re-check. Finding: the runtime
+decides with no requested objective (minimum 1.5R target from the decision-time entry), but
+the pre-submit re-check passed that old minimum target as a fixed objective with the fresh
+entry, so any adverse tick during the ~3 s AI review pushed reward:risk below 1.5 and blocked
+the entry, while unchanged/favourable moves passed: a systematic favourable selection bias.
+Proposed fix (execution semantics; needs operator approval before deployment): re-derive the
+minimum target from the fresh entry unless an objective was explicitly requested; the reviewed
+money-risk ceiling still applies; blocked details now name the Layer 5 reasons. New
+parametrized test (1-tick and 5-pip adverse moves) fails on the old code. 196 passed, Ruff clean.

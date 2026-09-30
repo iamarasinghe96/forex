@@ -206,13 +206,17 @@ class ExecutionService:
                                              snapshot.account.equity, self.policy, now)
         entry = snapshot.tick.ask if candidate.side is Side.LONG else snapshot.tick.bid
         portfolio = PortfolioRiskState(tuple(p.risk_position() for p in snapshot.positions))
+        # Without a requested objective, re-derive the minimum reward:risk target from the fresh
+        # entry, as the original decision did. Reusing the old target would block every entry
+        # whose price moved even one tick adversely during review, biasing results favourably.
         fresh = decide_risk(candidate, snapshot.account, snapshot.spec, entry,
-                            reviewed.plan.stop, reviewed.plan.requested_objective or
-                            reviewed.plan.minimum_objective, portfolio, daily, self.policy)
+                            reviewed.plan.stop, reviewed.plan.requested_objective,
+                            portfolio, daily, self.policy)
         plan = fresh.permitted_position_plan
         if fresh.status is not DecisionStatus.ELIGIBLE or plan is None:
+            reasons = ",".join(reason.value for reason in fresh.reasons) or "none"
             return ExecutionRecord(client_id, "BLOCKED", None,
-                                   "Fresh Layer 5 risk check blocked; flatten required="
+                                   f"Fresh Layer 5 risk check blocked ({reasons}); flatten required="
                                    f"{fresh.flatten_required}.")
         # A changed price may increase loss per lot. Preserve both the old reviewed
         # money ceiling and the fresh Layer 5 ceiling, not just the number of lots.
