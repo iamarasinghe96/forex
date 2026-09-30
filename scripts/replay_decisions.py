@@ -32,6 +32,31 @@ def pip(symbol: str) -> float:
     return 0.01 if symbol.endswith("JPY") else 0.0001
 
 
+COST_PIPS = {"EURUSD": 0.9, "GBPUSD": 1.2, "USDJPY": 1.0}  # Same assumptions as the research scripts.
+
+
+class Position:
+    """Rough live-rule simulation: structural stop, 1.5R target, stop to entry at +1R."""
+
+    def __init__(self, side: str, entry: float, stop: float, reward_risk: float, opened: datetime):
+        self.side, self.entry, self.stop, self.opened = side, entry, stop, opened
+        self.sign = 1 if side == "LONG" else -1
+        self.risk = abs(entry - stop)
+        self.target = entry + self.sign * reward_risk * self.risk
+        self.breakeven = False
+
+    def manage(self, candle: Candle) -> tuple[float, str] | None:
+        high, low = float(candle.high), float(candle.low)
+        adverse, favourable = (low, high) if self.sign > 0 else (high, low)
+        if (adverse - self.stop) * self.sign <= 0:  # Stop first when both touch (adverse).
+            return self.stop, "breakeven" if self.breakeven else "stop"
+        if (favourable - self.target) * self.sign >= 0:
+            return self.target, "target"
+        if not self.breakeven and (favourable - self.entry) * self.sign >= self.risk:
+            self.stop, self.breakeven = self.entry, True
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--db", type=Path, default=Path("data/paper.sqlite3"))
@@ -56,6 +81,10 @@ def main() -> int:
         days: dict[str, Counter[str]] = defaultdict(Counter)
         moves: dict[str, list[float]] = {}
         reasons: Counter[str] = Counter()
+        trades: list[str] = []
+        net_r = net_pips = 0.0
+        position: Position | None = None
+        cost = COST_PIPS.get(symbol.upper(), 1.0) * pip(symbol)
         for candle in h1:
             now = candle.timestamp_utc + timedelta(hours=1)
             if not since <= candle.timestamp_utc < until:
@@ -63,7 +92,26 @@ def main() -> int:
             day = candle.timestamp_utc.date().isoformat()
             first_last = moves.setdefault(day, [float(candle.open), float(candle.close)])
             first_last[1] = float(candle.close)
-            snap = analyse_market(symbol, p1.closed(now), p4.closed(now), now, config.analysis).snapshot
+            if position is not None:
+                closed = position.manage(candle)
+                if closed is not None:
+                    price, why = closed
+                    move = (price - position.entry) * position.sign - cost
+                    net_r += move / position.risk
+                    net_pips += move / pip(symbol)
+                    trades.append(f"  {position.opened:%m-%d %H:%M} {position.side:5s} -> "
+                                  f"{now:%m-%d %H:%M} {why:9s} {move / pip(symbol):+6.0f} pips "
+                                  f"{move / position.risk:+5.2f} R")
+                    position = None
+            result = analyse_market(symbol, p1.closed(now), p4.closed(now), now, config.analysis)
+            snap = result.snapshot
+            if position is None and result.candidate is not None:
+                side = result.candidate.side.value
+                levels = result.candidate.structural_reference_levels
+                stop = float(levels["rolling_low" if side == "LONG" else "rolling_high"])
+                entry = float(candle.close)
+                if (entry - stop) * (1 if side == "LONG" else -1) > 0:
+                    position = Position(side, entry, stop, float(config.backtest.reward_risk), now)
             label = snap.regime.label.value
             if snap.candidate_generated:
                 days[day]["CANDIDATE"] += 1
@@ -84,8 +132,14 @@ def main() -> int:
             first, last = moves[day]
             move = (last - first) / pip(symbol)
             print(f"  {day}  {move:+9.0f}   " + ", ".join(f"{k} {n}" for k, n in days[day].most_common()))
-    print("\nCANDIDATE = hours with a trade idea; the live bot holds one position per pair, so many"
-          "\nidea-hours can mean a single trade, and risk checks and news review still apply.")
+        print(f"  Simulated trades (one at a time, after {cost / pip(symbol):.1f} pip cost):")
+        print("\n".join(trades) if trades else "  none")
+        if position is not None:
+            print(f"  {position.opened:%m-%d %H:%M} {position.side:5s} -> still open")
+        print(f"  Closed total: {net_pips:+.0f} pips, {net_r:+.2f} R")
+    print("\nCANDIDATE = hours with a trade idea. Simulated trades are rough: entry at the hour's close,"
+          "\nstructural stop, 1.5R target, stop to entry at +1R; the live bot's risk checks and news"
+          "\nreview are not applied. A few weeks is an anecdote, not evidence.")
     return 0
 
 
