@@ -230,3 +230,10 @@ except the two expected Windows-only msvcrt errors in operations.py on a non-Win
 
 Next: operator decides which reviewed commit the VPS checks out; then install extras, run
 tests on the VPS, transfer the Firebase key securely, and run read-only .a symbol checks.
+
+VPS code deployment (operator-approved pin, not a merge): C:/forex local branch paper-vps at
+ccd00d7d236cbbff135fa3b41a376b9ffb1da6a5. Rollback: main 6b0273d8 plus the backup above.
+pip install -e .[mt5,firebase,dev] completed in the VPS .venv (Python 3.13.15). On the VPS:
+184 passed, Ruff clean, mypy "no issues found in 31 source files". Nothing started; paper,
+demo, context, Telegram and cloud flags all still disabled. reports/ is now git-ignored.
+Next: transfer PC .env and Firebase key to the VPS via RDP, fix the key path, verify presence.
