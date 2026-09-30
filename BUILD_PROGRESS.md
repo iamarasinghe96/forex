@@ -409,3 +409,21 @@ results (+0.063, +0.170 at >=55) exceed first-signal-when-flat results, suggesti
 entries may matter (scripts/research_entries.py tests signal-N-in-a-row, minimum stop size and
 per-pair results). Added analysis.allowed_setups (default both families) and set config to
 trend setups only with parameter_version trend-only-v1, pending operator approval to deploy.
+
+### Pre-registration (recorded before any 2012-2018 data was downloaded or examined)
+
+Candidate: trend setups only, confidence >= 55, enter only from the 3rd consecutive hourly
+signal (same pair/direction/setup), one open trade per pair, EURUSD/GBPUSD/USDJPY, assumed
+round-trip costs 0.9/1.2/1.0 pips. N=3 chosen over the better-looking N=4 to limit selection bias.
+Pass rule: net average R > 0 AND net profit factor > 1, all pairs combined, on an independent
+Dukascopy H1 bid dataset 2012-01-01..2018-12-31 (evaluation from 2012-04-01 after warm-up),
+fetched with dukascopy-node 1.50.0 exactly as the original data. Evaluated by
+scripts/research_candidate.py. Per-pair/per-year results are informative only. The 2025-09-28
+final holdout stays untouched until after this test. Motivation and caveats: 2021-2025 OOS gave
++0.090 R/trade for this rule (253 trades) but all profit came from USDJPY's 2021-2024 trend.
+
+Tooling: scripts/normalize_dukascopy_range.py (original checks; close clamped to own high/low
+with every repair logged, abort above 50 per pair), research_trades.py --start-utc single-window
+mode (exports all setup families regardless of live allowed_setups), research_candidate.py.
+Verified on synthetic data: fold export still reproduces run_walk_forward exactly; repair,
+import and validate_research_database succeed; single window starts at the requested time.

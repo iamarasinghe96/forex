@@ -31,24 +31,33 @@ def pip_size(symbol: str) -> float:
     return 0.01 if symbol.upper().endswith("JPY") else 0.0001
 
 
+ALL_SETUPS = ["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"]
+
+
 def export_symbol(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle], config: AppConfig,
-                  writer: Any, progress: TextIO | None = None) -> tuple[int, datetime | None]:
+                  writer: Any, progress: TextIO | None = None,
+                  window_start: datetime | None = None) -> tuple[int, datetime | None]:
+    """Walk-forward test windows by default; with window_start, one window to the end of the data
+    (for a separate, never-used dataset where no training split or holdout applies)."""
     policy = policy_from_config(config.risk)
-    analysis = parameter_experiment(config.analysis, {}).analysis
+    # Export every setup family so results stay comparable; the analysis scripts filter.
+    analysis = parameter_experiment(config.analysis, {"allowed_setups": ALL_SETUPS}).analysis
     start = max(min(c.timestamp_utc for c in h1), min(c.timestamp_utc for c in h4))
     end = min(max(c.timestamp_utc + c.timeframe.duration for c in h1),
               max(c.timestamp_utc + c.timeframe.duration for c in h4))
     protocol = build_walk_forward_folds(start, end, config.backtest)
+    windows = ([(0, window_start, end)] if window_start is not None else
+               [(f.fold_number, f.test_start_utc, f.test_end_utc) for f in protocol.folds])
     count = 0
-    for fold in protocol.folds:
+    for number, test_start, test_end in windows:
         result = run_backtest(symbol, h1, h4, analysis, config.backtest, policy, None,
-                              fold.test_start_utc, fold.test_end_utc, fold.test_end_utc)
+                              test_start, test_end, test_end)
         conviction = {e.candidate.candidate_id: derive_conviction(e.candidate, policy)
                       for e in result.evaluations if e.candidate is not None}
         for t in result.trades:
             c = conviction.get(t.candidate_id)
             writer.writerow({
-                "symbol": t.symbol, "fold": fold.fold_number, "signal_time_utc": t.signal_time_utc.isoformat(),
+                "symbol": t.symbol, "fold": number, "signal_time_utc": t.signal_time_utc.isoformat(),
                 "entry_time_utc": t.entry_time_utc.isoformat(), "exit_time_utc": t.exit_time_utc.isoformat(),
                 "side": t.side.value, "setup_family": t.setup_family, "trade_style": t.trade_style,
                 "regime": t.regime, "volatility_bucket": t.volatility_bucket, "sessions": "|".join(t.sessions),
@@ -61,8 +70,8 @@ def export_symbol(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle], confi
             })
             count += 1
         if progress is not None:
-            print(f"  {symbol} fold {fold.fold_number}/{len(protocol.folds)}: {len(result.trades)} trades", file=progress, flush=True)
-    return count, protocol.final_holdout_start_utc
+            print(f"  {symbol} window {number}/{len(windows)}: {len(result.trades)} trades", file=progress, flush=True)
+    return count, None if window_start is not None else protocol.final_holdout_start_utc
 
 
 def main() -> None:
@@ -75,6 +84,8 @@ def main() -> None:
     parser.add_argument("--research-database", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--out", type=Path, default=Path("reports/backtest/oos-trades.csv"))
+    parser.add_argument("--start-utc", type=datetime.fromisoformat,
+                        help="Evaluate one window from this UTC time to the end of the data (separate dataset only)")
     args = parser.parse_args()
     config = load_config(args.config)
     dataset, _ = validate_research_database(args.research_database, config.broker.symbols, config.market_data)
@@ -86,8 +97,11 @@ def main() -> None:
         writer.writeheader()
         for symbol in config.broker.symbols:
             count, holdout = export_symbol(symbol, store.load(symbol, Timeframe.H1),
-                                           store.load(symbol, Timeframe.H4), config, writer, sys.stdout)
-            print(f"{symbol}: {count} out-of-sample trades exported (final holdout from {holdout} excluded)", flush=True)
+                                           store.load(symbol, Timeframe.H4), config, writer, sys.stdout,
+                                           args.start_utc)
+            scope = (f"final holdout from {holdout} excluded" if holdout is not None
+                     else f"single window from {args.start_utc}")
+            print(f"{symbol}: {count} out-of-sample trades exported ({scope})", flush=True)
 
 
 if __name__ == "__main__":
