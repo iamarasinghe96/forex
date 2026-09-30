@@ -17,6 +17,21 @@ from pathlib import Path
 KINDS = ("no_trade", "candidate", "hard_risk_block", "context_rejection", "execution")
 
 
+def outcome(kind: str, payload: dict) -> str:
+    """One line on why a trade idea was blocked, reviewed or executed."""
+    if kind == "hard_risk_block":
+        risk = payload.get("risk") or {}
+        reasons = risk.get("reasons") or [payload.get("reason", "?")]
+        conviction = (risk.get("conviction") or {}).get("final_conviction")
+        detail = f" (conviction {float(conviction):.0f})" if conviction is not None else ""
+        return f"{risk.get('status', 'BLOCKED')}: {', '.join(map(str, reasons))}{detail}"
+    if kind == "context_rejection":
+        review = payload.get("review") or {}
+        return f"{review.get('status', '?')}: {str(review.get('rationale', ''))[:120]}"
+    record = payload.get("record") or {}
+    return f"{record.get('state', '?')}: {str(record.get('detail', ''))[:120]}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--db", type=Path, default=Path("data/paper.sqlite3"))
@@ -34,6 +49,7 @@ def main() -> int:
     regimes: dict[str, Counter[str]] = defaultdict(Counter)
     reasons: dict[str, Counter[str]] = defaultdict(Counter)
     daily: dict[str, dict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    after_idea: dict[str, list[str]] = defaultdict(list)
     for kind, observed, raw in rows:
         payload = json.loads(raw)
         symbol = payload.get("symbol", "?")
@@ -46,6 +62,8 @@ def main() -> int:
         elif kind == "candidate":
             regimes[symbol][payload.get("analysis", {}).get("regime", {}).get("label", "?")] += 1
             daily[symbol][observed[:10]]["CANDIDATE"] += 1
+        else:
+            after_idea[symbol].append(f"  {observed[:16]}  {kind:17s} {outcome(kind, payload)}")
     if not rows:
         print("No decisions in that period (was the bot running?).")
         return 0
@@ -57,6 +75,9 @@ def main() -> int:
         print("No-trade reasons:")
         for reason, n in reasons[symbol].most_common():
             print(f"  {n:5d}  {reason}")
+        if after_idea[symbol]:
+            print("What happened to each trade idea:")
+            print("\n".join(after_idea[symbol]))
         print("By day (regime counts; CANDIDATE = a trade idea was produced):")
         for day in sorted(daily[symbol]):
             print(f"  {day}  " + ", ".join(f"{k} {n}" for k, n in daily[symbol][day].most_common()))
