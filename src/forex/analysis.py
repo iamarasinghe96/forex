@@ -465,6 +465,9 @@ def analyse_market(symbol: str, h1: Sequence[Candle], h4: Sequence[Candle],
     regime = calculate_regime(h4_features, config)
     side, setup, components, support, oppose, no_reason = _candidate_logic(
         h1_features, regime, config)
+    if setup is not None and setup.value not in config.allowed_setups:
+        no_reason = f"{setup.value} setups are disabled by analysis.allowed_setups"
+        side = setup = None
     cutoff = max(closed_h1[-1].timestamp_utc + Timeframe.H1.duration,
                  closed_h4[-1].timestamp_utc + Timeframe.H4.duration)
     evaluation_id = _evaluation_id(config.strategy_version, symbol, closed_h1[-1].timestamp_utc)

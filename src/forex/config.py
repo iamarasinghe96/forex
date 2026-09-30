@@ -81,6 +81,9 @@ class AnalysisConfig(BaseModel):
     setup_score_threshold: float = Field(default=0.45, ge=0, le=1)
     extreme_zscore: float = Field(default=1.0, gt=0)
     swing_trend_threshold: float = Field(default=0.68, ge=0, le=1)
+    # Setup families allowed to produce candidates; others are recorded as no-trade decisions.
+    allowed_setups: list[Literal["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"]] = Field(
+        default=["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"], min_length=1)
 
     @model_validator(mode="after")
     def ordered_periods(self) -> AnalysisConfig:

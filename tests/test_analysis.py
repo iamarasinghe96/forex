@@ -232,3 +232,18 @@ def test_macro_contract_and_pure_analysis_has_no_broker_or_clock_calls() -> None
     assert "MetaTrader5" not in source
     assert "datetime.now" not in source
     assert "place_order" not in source
+
+
+def test_disabled_setup_family_becomes_a_recorded_no_trade() -> None:
+    config = compact_config(trend_threshold=0.9, range_threshold=0.4, extreme_zscore=0.7,
+                            allowed_setups=["TREND_CONTINUATION_BREAKOUT_PULLBACK"])
+    h4_values = [1 + math.sin(i) * 0.002 for i in range(40)]
+    h1_values = [1 + math.sin(i) * 0.001 for i in range(39)] + [0.995]
+    h4, h1 = candles(Timeframe.H4, h4_values), candles(Timeframe.H1, h1_values)
+    evaluation = max(h1[-1].timestamp_utc + timedelta(hours=1),
+                     h4[-1].timestamp_utc + timedelta(hours=4))
+    result = analyse_market("EURUSD", h1, h4, evaluation, config)
+    assert result.snapshot.regime.label is RegimeLabel.RANGE
+    assert result.candidate is None
+    assert result.snapshot.no_candidate_reason == (
+        "RANGE_MEAN_REVERSION setups are disabled by analysis.allowed_setups")

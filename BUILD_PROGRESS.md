@@ -398,3 +398,14 @@ Added scripts/research_trades.py (per-trade OOS export with conviction; verified
 data to reproduce run_walk_forward's aggregate OOS trade count and cumulative R exactly, no
 holdout rows) and scripts/research_summary.py (assumed costs, one-position-per-pair sequencing,
 setup x band table, candidate rules A/A-live/B/C, net by year). Research only; bot unchanged.
+
+Per-trade OOS export on the PC reproduced the report counts exactly (EURUSD 8024, GBPUSD 8176,
+USDJPY 8824). research_summary.py (assumed round-trip costs 0.9/1.2/1.0 pips, one position per
+pair): current live rules -0.488 R/trade net over 6,643 trades, negative in every year 2021-2025;
+trend setups with confidence >= 55: +0.040 R net over 361 trades (about 1.6/week across 3 pairs;
+years -0.085/+0.162/+0.028/+0.082/-0.101), statistically indistinguishable from zero; trend swing
++0.044 R (273). Range mean-reversion is the dominant, consistent loser. Every-signal trend
+results (+0.063, +0.170 at >=55) exceed first-signal-when-flat results, suggesting confirmation
+entries may matter (scripts/research_entries.py tests signal-N-in-a-row, minimum stop size and
+per-pair results). Added analysis.allowed_setups (default both families) and set config to
+trend setups only with parameter_version trend-only-v1, pending operator approval to deploy.

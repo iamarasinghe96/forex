@@ -35,7 +35,7 @@ market_data:
 # Layer 3 research starting points. Every value is UNVALIDATED and versioned for Layer 4 testing.
 analysis:
   strategy_version: layer3-v1
-  parameter_version: unvalidated-v1
+  parameter_version: trend-only-v1   # Operator-approved 2026-09-30: range setups disabled after OOS research.
   ema_fast: 20
   ema_slow: 50
   ema_context: 200
@@ -53,6 +53,8 @@ analysis:
   setup_score_threshold: 0.45
   extreme_zscore: 1.0
   swing_trend_threshold: 0.68
+  # Range mean-reversion lost in every OOS year (research_summary.py); trend setups only.
+  allowed_setups: [TREND_CONTINUATION_BREAKOUT_PULLBACK]
 
 # Layer 4 research-only assumptions. They never alter strategy parameters or place orders.
 backtest:
