@@ -427,3 +427,18 @@ with every repair logged, abort above 50 per pair), research_trades.py --start-u
 mode (exports all setup families regardless of live allowed_setups), research_candidate.py.
 Verified on synthetic data: fold export still reproduces run_walk_forward exactly; repair,
 import and validate_research_database succeed; single window starts at the requested time.
+
+### Result of the pre-registered test (2026-09-30)
+
+Independent Dukascopy H1 bid 2012-2018 (dukascopy-node 1.50.0, flats excluded, 0 repairs;
+EURUSD 43,635 / GBPUSD 40,441 / USDJPY 42,009 rows; dataset bed3584927bd; evaluated from
+2012-04-01). Pre-registered candidate: 349 trades, net -0.001 R, PF 1.00 -> VERDICT FAIL.
+Confirmation-entry effect seen in 2021-2025 did not replicate. Supporting results (net, one
+position per pair): all-setups current rules -0.425 R (9,548 trades, every year negative);
+range mean-reversion negative in every band and year (confirms the trend-only switch); trend
+setups with confidence >= 55: +0.028 R (475 trades, 5 of 7 years positive), consistent in sign
+with 2021-2025 (+0.040 R, 361) but not distinguishable from zero. Conclusion: the current
+signal has no demonstrated edge beyond break-even; further filtering would be data mining.
+Final holdout remains untouched. Proposed next hypothesis (not yet registered): trend entries
+with an ATR trailing exit (multiple 3, fixed a priori) instead of the fixed 1.5R target, which
+must pass on both independent periods.
