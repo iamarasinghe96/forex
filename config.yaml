@@ -129,5 +129,6 @@ paper:
   poll_seconds: 5
   history_days: 365
   heartbeat_file: data/paper-heartbeat.json
+  health_journal_seconds: 60   # Journal/Firestore health cadence; heartbeat file stays every cycle.
   halt_file: data/HALT_PAPER
   no_trade_hours: 168

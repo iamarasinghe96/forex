@@ -262,3 +262,13 @@ Operator approved the supervised PAPER configuration: paper, telegram, context a
 enabled; mode paper; demo_enabled false; emergency_halt_enabled false; AUD 100; New York
 close. tests/test_paper.py candidate-provenance test now disables context explicitly instead
 of relying on config.yaml defaults. 184 passed, Ruff clean.
+
+Pre-start finding: PaperRuntime.heartbeat() journaled a balance and a health event every
+cycle (paper.poll_seconds 5), and every journal event is queued for Firestore as one event
+plus two aggregate writes: about 34,560 events and roughly 100,000 document writes a day.
+That exceeds Firestore's free daily write allowance within hours and would bloat the local
+journal. Proposed fix (needs operator approval before deployment): journal health/balance
+at most every paper.health_journal_seconds (60, capped at 110, below the 120 s soak gap
+threshold), and immediately on status change; the heartbeat file is still written every
+cycle for the watchdog. Expected ~2,880 events and ~8,640 cloud writes a day. New regression
+test fails on the previous code and passes now; 185 passed, Ruff clean.

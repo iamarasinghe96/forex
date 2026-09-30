@@ -233,3 +233,33 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_
     paper.journal_fills(runtime.journal)
     assert len(paper.positions()) == 1
     feed.place_order.assert_not_called()
+
+
+def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path) -> None:
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.runtime import PaperRuntime
+
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.context.enabled = False
+    config.execution.session_rollover = None
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    config.paper.health_journal_seconds = 60
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)),
+                           lambda: NOW)
+
+    def health() -> list[str]:
+        return [e.payload["status"] for e in runtime.journal.events() if e.kind == "health"]
+
+    runtime.heartbeat(NOW, "RUNNING")
+    runtime.heartbeat(NOW + timedelta(seconds=5), "RUNNING")
+    assert health() == ["RUNNING"]
+    assert read_heartbeat(config.paper.heartbeat_file, NOW + timedelta(seconds=5), 1)
+    runtime.heartbeat(NOW + timedelta(seconds=10), "HALTED")  # Status change is recorded at once.
+    runtime.heartbeat(NOW + timedelta(seconds=70), "HALTED")
+    runtime.heartbeat(NOW + timedelta(seconds=71), "HALTED")
+    assert health() == ["RUNNING", "HALTED", "HALTED"]
+    assert len([e for e in runtime.journal.events() if e.kind == "balance"]) == 3

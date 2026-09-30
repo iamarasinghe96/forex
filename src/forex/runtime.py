@@ -88,6 +88,7 @@ class PaperRuntime:
         self.started = clock()
         self.next_analysis = self.started
         self.entry_blocks: set[str] = set()
+        self.last_health_journal: tuple[datetime, str] | None = None
         self.config_fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
         source = hashlib.sha256()
         for path in sorted(Path(__file__).parent.rglob("*.py")):
@@ -216,12 +217,18 @@ class PaperRuntime:
     def heartbeat(self, now: datetime, status: str) -> None:
         account = self.paper.state(now)
         identity = now.isoformat()
-        self.emit("balance", identity, {"balance": account.balance, "equity": account.equity}, now)
         payload = {"status": status, "connection": "MARKET_DATA_OBSERVED", "positions": json_value(self.paper.position_status(now)),
                    "started_at_utc": self.started, "observed_at_utc": now, "mode": "PAPER",
                    "config_fingerprint": self.config_fingerprint, "code_fingerprint": self.code_fingerprint}
         payload["entry_blocked_symbols"] = sorted(self.entry_blocks)
-        self.emit("health", identity, payload, now)
+        last = self.last_health_journal
+        if (last is None or last[1] != status or
+                (now - last[0]).total_seconds() >= self.config.paper.health_journal_seconds):
+            # Every journal event is mirrored to the cloud, so a 5-second cadence would cost
+            # tens of thousands of writes a day; status changes are still recorded at once.
+            self.emit("balance", identity, {"balance": account.balance, "equity": account.equity}, now)
+            self.emit("health", identity, payload, now)
+            self.last_health_journal = (now, status)
         path = self.config.paper.heartbeat_file
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".tmp")

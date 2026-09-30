@@ -220,6 +220,9 @@ class PaperConfig(BaseModel):
     poll_seconds: float = Field(default=5, gt=0)
     history_days: int = Field(default=365, ge=60)
     heartbeat_file: Path = Path("data/paper-heartbeat.json")
+    # Journal/cloud health records are throttled below the 120-second soak gap threshold;
+    # the local heartbeat file is still written every cycle for the watchdog.
+    health_journal_seconds: float = Field(default=60, gt=0, le=110)
     halt_file: Path = Path("data/HALT_PAPER")
     no_trade_hours: float = Field(default=168, gt=0)
 
