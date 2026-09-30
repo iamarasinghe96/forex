@@ -330,3 +330,25 @@ Proposed fix (execution semantics; needs operator approval before deployment): r
 minimum target from the fresh entry unless an objective was explicitly requested; the reviewed
 money-risk ceiling still applies; blocked details now name the Layer 5 reasons. New
 parametrized test (1-tick and 5-pip adverse moves) fails on the old code. 196 passed, Ruff clean.
+
+## Seven-day supervised PAPER observation — official start
+
+- Start (runtime started_at_utc): 2026-09-30T02:16:08.567819Z on the Windows VPS, C:/forex,
+  interactive console under the MT5 user session (scripts/start-paper.ps1).
+- Code: ebb4311f67eb62f16d428b15f25552ecf0d2229c (branch claude/determined-thompson-f4ewei;
+  PR #18 not merged; main unchanged). Runtime code fingerprint
+  72cfd83c0ffb7081233679a3e8ab485a002051194308cb9ca80df974d7d22576.
+- Config fingerprint ac6ff7dfc1d6806c92e28f2d604389c361a1c301bf38c0b3abd54b82884844fa:
+  mode paper, paper/telegram/context/cloud enabled, demo_enabled false, remote halt false,
+  AUD 100 virtual start, New York 17:00 rollover, symbols mapped to .a instruments.
+- Opening state: virtual balance AUD 100.0, no open positions, entry-blocked none, Firestore
+  135 delivered / 0 waiting / no errors. MT5 Algo Trading OFF; no broker orders possible.
+- Evidence so far (same paper DB, earlier runs 01:07Z-02:16Z): 4 no_trade, 2 candidates,
+  2 risk decisions, 1 hard_risk_block, 1 execution BLOCKED (fresh re-check, pre-fix).
+- Operator decisions: Telegram token exposure accepted without rotation (operator choice);
+  OpenRouter remains an unverified 429 fallback; no billing changes.
+- Known limitations during the run: no heartbeat while markets are closed (weekend gaps are
+  expected in the soak report); startup/restart needs an open market (clock check); no
+  commission/swap/slippage in simulated P&L; no scheduled task/watchdog/reboot recovery yet,
+  so a VPS reboot or Windows sign-out stops the bot until manually restarted.
+- Planned review: after 2026-10-07T02:16Z run paper-soak-report and the Layer 11 diagnosis.
