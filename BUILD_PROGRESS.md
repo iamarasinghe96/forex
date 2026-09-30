@@ -367,3 +367,8 @@ Operator usability request (2026-09-30): one-click VPS start and a simple phone 
   now also deploys from this branch when DASHBOARD_DEPLOY_ENABLED=true. Pending operator
   steps: environment branch rule, four Firebase web variables, authorized domain
   iamarasinghe96.github.io.
+- 2026-09-30 ~02:58Z: operator completed the Pages environment branch rule, the five repository
+  variables and the Firebase authorized domain iamarasinghe96.github.io. Workflow run
+  36661534530 (attempt 2, 072aa09) passed model, Firestore-rules, browser and build checks and
+  deployed to https://iamarasinghe96.github.io/forex/. Phone sign-in on the live page is not yet
+  verified (this agent's network cannot reach github.io).
