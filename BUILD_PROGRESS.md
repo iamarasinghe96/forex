@@ -304,3 +304,17 @@ redaction filter masks bot<id>:<token> patterns on console and file handlers; re
 test fails on the old code. 190 passed, Ruff clean. Required operator actions: stop the bot,
 revoke the token in BotFather, set the new token in VPS and PC .env without displaying it,
 redact old log files, deploy the fix, restart.
+
+Supervised run on b0d8e41 from 01:19:29Z: the heartbeat stalled soon after start (188 s old
+at the first status check) and later resumed; the operator stopped it with Ctrl+C at
+01:44:33Z ("Paper loop stopped by operator; positions retained"). Probable cause: Windows
+console QuickEdit selection after clicking in the bot window, which blocks the next console
+write. start-paper.ps1 now disables QuickEdit for the bot's own console (warning if it cannot).
+Firestore rejected one risk_decision event 13 times with InvalidArgument: exposure fields are
+tuples of pairs, i.e. arrays inside arrays, which Firestore forbids. Cloud documents now wrap
+inner arrays as {"items": [...]}; the local journal and payload hash are unchanged, and the
+stuck event will deliver on retry. First evaluation (01:07Z): EURUSD and GBPUSD no_trade;
+USDJPY candidate passed risk, Groq review VALID, execution recorded but no simulated order
+was stored (reason to be read from the execution event). Paper balance AUD 100, no positions.
+Test runs write warnings into the production logs/forex.jsonl (cosmetic; not changed).
+192 passed, Ruff clean; PowerShell 7 parse check of all scripts clean.

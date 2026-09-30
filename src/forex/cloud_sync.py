@@ -125,6 +125,17 @@ class SyncWorker:
             stop.wait(poll_seconds)
 
 
+def firestore_safe(value: Any) -> Any:
+    """Firestore rejects an array directly inside an array (InvalidArgument). Wrap inner
+    arrays as {"items": [...]}; the local journal and its payload hash stay unchanged."""
+    if isinstance(value, dict):
+        return {key: firestore_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [{"items": firestore_safe(item)} if isinstance(item, list) else firestore_safe(item)
+                for item in value]
+    return value
+
+
 class FirestoreMirror:
     def __init__(self, client: Any):
         self.client = client
@@ -151,7 +162,7 @@ class FirestoreMirror:
               daily: Mapping[str, Any]) -> None:
         root = self.client.collection("modes").document(event.mode)
         batch = self.client.batch()
-        batch.set(root.collection("events").document(event.event_id), json_value(event))
+        batch.set(root.collection("events").document(event.event_id), firestore_safe(json_value(event)))
         batch.set(root.collection("aggregates").document("all"), dict(summary))
         batch.set(root.collection("aggregates").document(event.observed_at_utc.date().isoformat()),
                   dict(daily))
