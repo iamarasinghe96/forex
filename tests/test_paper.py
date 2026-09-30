@@ -263,3 +263,38 @@ def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path)
     runtime.heartbeat(NOW + timedelta(seconds=71), "HALTED")
     assert health() == ["RUNNING", "HALTED", "HALTED"]
     assert len([e for e in runtime.journal.events() if e.kind == "balance"]) == 3
+
+
+def test_persistent_cycle_failure_is_reported_once_then_hourly_then_recovered(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from threading import Event
+
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.runtime import PaperRuntime
+
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.context.enabled = config.cloud.enabled = config.telegram.enabled = False
+    config.execution.session_rollover = None
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    config.paper.poll_seconds = 0.001
+    config.paper.error_repeat_seconds = 3600
+    ticks = iter(range(10_000))
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)),
+                           lambda: NOW + timedelta(seconds=5 * next(ticks)))
+    outcomes = [OperatorError("stale")] * 800 + [None]  # ~66 minutes of 5-second failures, then healthy.
+
+    def cycle() -> None:
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+    monkeypatch.setattr(runtime, "cycle", cycle)
+    runtime.run(Event(), maximum_cycles=801)
+    errors = [e.payload for e in runtime.journal.events() if e.kind == "error"]
+    assert [e["consecutive_failed_cycles"] for e in errors] == [1, 721]
+    alerts = [e.payload["reason"] for e in runtime.journal.events() if e.kind == "alert"]
+    assert len(alerts) == 1 and alerts[0].startswith("Recovered after 800 failed cycles (OperatorError)")
+    feed.place_order.assert_not_called()

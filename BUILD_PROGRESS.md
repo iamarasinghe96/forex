@@ -282,3 +282,15 @@ MT5 to deliver one) before the clock check; MT5Broker.tick() now rejects empty 0
 ticks. New startup test reproduces the VPS error on the old code. 188 passed, Ruff clean.
 Known limitation: startup clock validation needs a tick newer than the 300 s tolerance, so
 a restart while the market is closed (weekend) will refuse to start until it reopens.
+
+Pre-start finding 2: every cycle starts by reading a live quote per symbol, and
+PaperBroker._quote rejects quotes older than execution.maximum_quote_age_seconds (30 s)
+without regard to market hours. Any failed cycle journaled an "error" with a unique identity,
+and errors go to Telegram and Firestore. Over a weekend close (~48 h at 5 s) that is ~34,000
+Telegram messages and ~100,000 Firestore writes, plus bursts at the daily rollover pause.
+Fix: every failure is still logged locally, but the journal records the first failure of a
+streak, then at most one reminder per paper.error_repeat_seconds (3600), with consecutive
+count and start time, and one "recovered" alert when a cycle succeeds again. Regression test
+fails on the previous runtime. 189 passed, Ruff clean. Remaining known behaviour: no
+heartbeat is written while cycles fail (e.g. weekends), so the soak report shows those
+periods as unobserved gaps and a scheduled watchdog would halt; review before scheduling it.

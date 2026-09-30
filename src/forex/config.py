@@ -223,6 +223,8 @@ class PaperConfig(BaseModel):
     # Journal/cloud health records are throttled below the 120-second soak gap threshold;
     # the local heartbeat file is still written every cycle for the watchdog.
     health_journal_seconds: float = Field(default=60, gt=0, le=110)
+    # A persistent failure (e.g. weekend quotes) is reported once, then at most this often.
+    error_repeat_seconds: float = Field(default=3600, gt=0)
     halt_file: Path = Path("data/HALT_PAPER")
     no_trade_hours: float = Field(default=168, gt=0)
 

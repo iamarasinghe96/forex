@@ -89,6 +89,8 @@ class PaperRuntime:
         self.next_analysis = self.started
         self.entry_blocks: set[str] = set()
         self.last_health_journal: tuple[datetime, str] | None = None
+        # (error type, failing since, last reported, consecutive failed cycles)
+        self.failure: tuple[str, datetime, datetime, int] | None = None
         self.config_fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
         source = hashlib.sha256()
         for path in sorted(Path(__file__).parent.rglob("*.py")):
@@ -258,10 +260,14 @@ class PaperRuntime:
                 try:
                     self.cycle()
                 except Exception as exc:  # noqa: BLE001 - persist failure and stop entries until next healthy cycle
-                    now = self.clock()
-                    self.emit("error", now.isoformat(), {"error_type": type(exc).__name__,
-                              "action": "Entries halted this cycle; inspect local logs and market data"}, now)
-                    logging.getLogger("forex.paper").error("Paper cycle failed: %s; entries halted.", type(exc).__name__)
+                    self.record_failure(type(exc).__name__, self.clock())
+                else:
+                    if self.failure is not None:
+                        now = self.clock()
+                        kind, since, _, count = self.failure
+                        self.emit("alert", "recovered:" + now.isoformat(), {
+                            "reason": f"Recovered after {count} failed cycles ({kind}) since {since.isoformat()}"}, now)
+                        self.failure = None
                 cycles += 1
                 if maximum_cycles is None or cycles < maximum_cycles:
                     stop.wait(self.config.paper.poll_seconds)
@@ -272,6 +278,24 @@ class PaperRuntime:
             if alert_thread:
                 alert_thread.join(timeout=5)
             self.feed.disconnect()
+
+
+    def record_failure(self, error_type: str, now: datetime) -> None:
+        """Every failed cycle is logged locally; the journal (Telegram/cloud) gets the first
+        failure of a streak and then one reminder per error_repeat_seconds, not one per cycle."""
+        logging.getLogger("forex.paper").error("Paper cycle failed: %s; entries halted.", error_type)
+        previous = self.failure
+        if previous is None or previous[0] != error_type:
+            self.failure = (error_type, now, now, 1)
+        else:
+            due = (now - previous[2]).total_seconds() >= self.config.paper.error_repeat_seconds
+            self.failure = (error_type, previous[1], now if due else previous[2], previous[3] + 1)
+            if not due:
+                return
+        _, since, _, count = self.failure
+        self.emit("error", now.isoformat(), {
+            "error_type": error_type, "consecutive_failed_cycles": count, "failing_since_utc": since,
+            "action": "Entries halted while this persists; inspect local logs and market data"}, now)
 
 
 def read_heartbeat(path: Path, now: datetime, maximum_age_seconds: float) -> bool:
