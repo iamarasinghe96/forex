@@ -19,7 +19,7 @@ function renderSimple(){
   $('bot-state').textContent=(state.running?'● ':'○ ')+'Bot: '+state.label;$('bot-state').className='bot '+(state.running?'on':'off');
   $('range').textContent=s.from===null?`All time, up to ${when(s.to)} (Sydney time)`:`${when(s.from)} → ${when(s.to)} (Sydney time)`;
   $('invested').textContent=s.invested===null?'–':money(s.invested);$('balance').textContent=s.balance===null?'–':money(s.balance);
-  $('profit').textContent=s.trades?`${signed(s.profit)}${s.profitPercent===null?'':` (${s.profitPercent>0?'+':''}${s.profitPercent.toFixed(1)}%)`}`:'A$0.00';
+  $('profit').textContent=s.trades?`${signed(s.profit)}${s.profitPercent===null?'':` (${s.profitPercent>0?'+':''}${s.profitPercent.toFixed(1)}%)`}`:money(0);
   $('profit').className=s.profit>0?'up':s.profit<0?'down':'';
   $('trades').textContent=String(s.trades);$('won').textContent=String(s.won);$('lost').textContent=String(s.lost);
   $('open').replaceChildren();const open=Array.isArray(summary.latest_health?.positions)?summary.latest_health.positions:[];
