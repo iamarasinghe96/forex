@@ -121,11 +121,95 @@ worked example is a single stock (Bath & Body Works, BBWI), not forex.
 
 ---
 
+## Entry 3 — 2026-09-30 — Full technical-analysis lesson (YouTube video, ~77 minutes, summarised)
+
+Source: a beginner-to-intermediate technical-analysis video (presenter sells a paid "EAP Training
+Program", US$697; the operator pasted a detailed summary, not the video). Forex-focused examples
+(EUR/NZD, EUR/AUD, AUD/CAD daily charts). The presenter says his examples are cherry-picked.
+
+**Framework, condensed (his order)**
+
+1. *Candles:* open/high/low/close; meaning is the same on every timeframe.
+2. *Trend by structure, not indicators:* uptrend = higher highs and higher lows; it stays valid
+   until price **closes below the last pullback low** (downtrend: closes above the last pullback
+   high). Trade with the trend rather than picking tops and bottoms.
+3. *Support/resistance and "break and retest":* broken resistance often becomes support (and the
+   reverse). Enter on the pullback to the broken level, not on the breakout itself.
+4. *Stops and targets from structure:* stop **beyond** the swing level plus room; target at the
+   next opposing level; never aim through a major opposing level (take profit before it or move
+   the stop to break-even).
+5. *ATR on every trade* to size stops to current volatility:
+   - method 1: stop = distance to swing high/low **+ 1 ATR**; target about 2 ATR or next structure;
+   - method 2: stop = **2 ATR**, target = **4 ATR** (2:1).
+   A fixed 10-pip stop ignores that a daily candle may move 190 pips.
+6. *Moving averages:* 20 MA as short-term trend/volatility filter (price above = bullish); 20/50/200
+   as "areas of value" that are widely watched — **but never buy just because price touches one**
+   (he tried; it did not work). Optional: trail the stop along the 20 MA to catch 3:1 or 4:1 moves.
+7. *RSI is momentum, not an automatic signal:* buying below 30 / selling above 70 alone "is not
+   viable". Use only as supporting evidence, e.g. bearish divergence (price higher high, RSI lower
+   high) at major resistance.
+8. *Objective entry triggers (candles):*
+   - **38.2 candle**: bullish if the whole body is above the 38.2% level of the candle's range
+     measured from its low (a rules-based "hammer"); bearish mirror.
+   - **Engulfing**: colour changes and the new body is larger than the previous body.
+   - **Close-above / close-below**: close beyond the previous candle's high / low.
+9. *Chart patterns (10-50 candles):* double bottom/top with an objective "termination zone"
+   (second test must reach, but not close beyond, the first bottom's body-to-wick zone), then
+   neckline break, pullback to the neckline, first candle in the trade direction = entry.
+10. *Higher-timeframe alignment:* take a 1-hour double bottom only if the **daily** is in an
+    uptrend (and the reverse for tops).
+11. *Breakout patterns:* flags in strong trends (above the 20 MA); flat resistance with rising
+    lows (and the bearish mirror) - enter on the retest of the broken level, accepting that some
+    moves leave without you.
+12. *Core rule:* **stack evidence** - trend + structure + area of value + entry trigger +
+    ATR-sized stop + structural target. Any single pattern or indicator alone is not an edge.
+13. *Beyond charts:* risk management and trading psychology are separate essentials. Advice:
+    combine concepts into explicit rules, **backtest**, then demo-trade about **three profitable
+    months** before going live. (His "ahead of 95% of traders" claim is unsupported.)
+
+**How this relates to our bot and results**
+
+- Our bot already matches much of this: trend on the higher timeframe, 20/50/200 averages, entry on
+  a pullback toward the 20 average, stop at the recent swing low/high.
+- What it lacks, per this framework: (a) an explicit **entry trigger candle** ("wait for buying
+  pressure" at the pullback), (b) **ATR room beyond the swing** in the stop (ours has none),
+  (c) **targets at the next structure** instead of a fixed 1.5x, (d) **daily-trend alignment**,
+  (e) trend defined by **swing structure** (higher highs/lows) rather than moving-average maths.
+- Consistent with our data: RSI/"overbought-oversold" mean-reversion alone lost money (our range
+  setups lost in every year); he independently says the same.
+- Caution: every added filter is another knob. Stacking five conditions can make any past chart
+  look perfect (overfitting) and leaves few trades to judge. We should test a **small, fixed**
+  combination written down in advance, not search for the best-looking stack.
+
+**Candidate ideas to test later (not yet tested)**
+
+| # | Plain-language rule | Test sketch | Data we have? |
+|---|---|---|---|
+| J3-a | **Entry trigger:** after a trend pullback, only enter once a bullish 38.2, engulfing or close-above candle appears (mirror for sells). | Add candle-trigger check at the entry bar; compare with entering without a trigger. | Yes. |
+| J3-b | **ATR-padded stop:** stop = swing low/high **+ 1 ATR** (ours has no padding); or method 2: stop 2 ATR / target 4 ATR. | Same entries, alternative stop/target rules. | Yes. |
+| J3-c | **Structural target:** target the previous swing high (buys) / low (sells); skip trades where that level gives less than 1.5:1. | Needs swing-level detection (codeable from our data). | Yes. |
+| J3-d | **Structure-based trend:** trend = higher highs/lows, invalid on a close beyond the last pullback extreme; replaces the moving-average trend score. | Swing detection with an ATR threshold. | Yes. |
+| J3-e | **Break-and-retest continuation:** buy the first pullback into the most recently broken swing high, with a J3-a trigger. | Most complex; after J3-a to J3-d. | Yes. |
+| J3-f | **20-MA trailing stop** instead of a fixed target. (Our 3x ATR trail failed the final year; this is a different trail.) | Same entries, exit on close back through the 20 MA. | Yes. |
+
+---
+
 ## Recurring themes across entries
 
 | Theme | Sources | Status |
 |---|---|---|
-| Higher-timeframe trend agreement (daily/weekly must agree before trading) | Entry 1 (claims 1, 3), Entry 2 (claims 1, 4) | Untested. Strongest recurring idea: J1-a / J2-a. |
+| Higher-timeframe trend agreement (daily/weekly must agree before trading) | Entry 1 (claims 1, 3), Entry 2 (claims 1, 4), Entry 3 (claim 10) | Untested. Strongest recurring idea (3 of 3 sources): J1-a / J2-a. |
 | Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3) | Partly supported by our data (swing > day trades). |
-| Higher-timeframe support/resistance levels matter | Entry 1 (claims 3, 5), Entry 2 (example: close above resistance) | Untested: J1-b. |
+| Higher-timeframe support/resistance levels matter | Entry 1 (claims 3, 5), Entry 2 (example), Entry 3 (claims 3, 4) | Untested: J1-b, J3-c, J3-e. |
 | News/scheduled events can override charts | Entry 1 (claim 10) | Untested: J1-d (needs an economic calendar). |
+| Wait for an entry trigger ("buying pressure") rather than entering on location alone | Entry 2 (KST cross), Entry 3 (claims 8, 12) | Untested: J3-a. |
+| Stops sized to volatility (ATR) and placed beyond structure | Entry 3 (claims 4, 5) | Untested: J3-b. Our stops have no ATR padding. |
+| Let winners run with a trailing stop | Entry 3 (claim 6) | 3x ATR trail: passed 2012-2018 and 2021-2025 but FAILED the final year. 20-MA trail untested (J3-f). |
+| Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7) | Agrees with our data: range setups lost in every year. |
+
+## Suggested first test batch (to agree before running)
+
+Test a small number of ideas, each written down in advance, so we don't "search until something
+looks good": (1) **daily-trend alignment** (J1-a) - backed by all three sources; (2) **entry
+trigger candle** (J3-a); (3) **ATR-padded stop** (J3-b). Each on 2012-2018 and 2021-2025, one
+position per pair, after costs; a fresh untouched period is needed for any final check.
