@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 
@@ -29,20 +30,39 @@ class ModeFilter(logging.Filter):
         return True
 
 
+class SecretRedactionFilter(logging.Filter):
+    """Telegram puts the bot token in the request URL; never let it reach console or files."""
+
+    TELEGRAM_TOKEN = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        redacted = self.TELEGRAM_TOKEN.sub("bot<redacted>", message)
+        if redacted != message:
+            record.msg, record.args = redacted, None
+        return True
+
+
 def configure_logging(config: AppConfig) -> None:
     config.logging.directory.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(logging.INFO)
+    # httpx logs every request URL at INFO, which includes the Telegram bot token.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     mode_filter = ModeFilter(config.mode)
+    redaction = SecretRedactionFilter()
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter("%(asctime)s [%(mode)s] %(levelname)s %(message)s"))
     console.addFilter(mode_filter)
+    console.addFilter(redaction)
     durable = RotatingFileHandler(
         config.logging.directory / "forex.jsonl", maxBytes=config.logging.max_bytes,
         backupCount=config.logging.backup_count, encoding="utf-8",
     )
     durable.setFormatter(JsonFormatter())
     durable.addFilter(mode_filter)
+    durable.addFilter(redaction)
     root.addHandler(console)
     root.addHandler(durable)

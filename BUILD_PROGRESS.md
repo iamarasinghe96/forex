@@ -294,3 +294,13 @@ count and start time, and one "recovered" alert when a cycle succeeds again. Reg
 fails on the previous runtime. 189 passed, Ruff clean. Remaining known behaviour: no
 heartbeat is written while cycles fail (e.g. weekends), so the soak report shows those
 periods as unobserved gaps and a scheduled watchdog would halt; review before scheduling it.
+
+Supervised PAPER run started on the VPS at 2026-09-30T01:07:05Z (1530190): first analysis ran,
+a Groq context review returned HTTP 200, and a daily_summary alert reached the operator's
+phone. SECURITY INCIDENT: httpx logs request URLs at INFO and Telegram URLs embed the bot
+token, so the token was printed in the bot console, written to logs/forex.jsonl and pasted
+into the assistant chat by the operator. Fix: httpx/httpcore loggers set to WARNING and a
+redaction filter masks bot<id>:<token> patterns on console and file handlers; regression
+test fails on the old code. 190 passed, Ruff clean. Required operator actions: stop the bot,
+revoke the token in BotFather, set the new token in VPS and PC .env without displaying it,
+redact old log files, deploy the fix, restart.
