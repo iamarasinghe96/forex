@@ -272,3 +272,13 @@ at most every paper.health_journal_seconds (60, capped at 110, below the 120 s s
 threshold), and immediately on status change; the heartbeat file is still written every
 cycle for the watchdog. Expected ~2,880 events and ~8,640 cloud writes a day. New regression
 test fails on the previous code and passes now; 185 passed, Ruff clean.
+
+First supervised start on the VPS (4055846, 2026-09-30 ~00:53 UTC) exited at once with
+"Retrieve an MT5 tick before validating the broker server clock." run_paper validated the
+clock before any tick had been read; unit tests used fakes and never exercised that order.
+Nothing was created (no paper DB, heartbeat or journal) and no order was sent. Fix: read a
+live tick for the first configured symbol (waiting up to broker.connect_timeout_seconds for
+MT5 to deliver one) before the clock check; MT5Broker.tick() now rejects empty 0.0/time-0
+ticks. New startup test reproduces the VPS error on the old code. 188 passed, Ruff clean.
+Known limitation: startup clock validation needs a tick newer than the 300 s tolerance, so
+a restart while the market is closed (weekend) will refuse to start until it reopens.

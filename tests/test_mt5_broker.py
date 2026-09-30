@@ -275,3 +275,54 @@ def test_explicit_mapping_rejects_wrong_currency_pair():
     with pytest.raises(OperatorError, match="wrong currency pair"):
         MT5Broker(cfg, "secret", api).resolve_symbol("EURUSD")
     assert api.selected == []
+
+
+def test_empty_tick_from_new_symbol_is_rejected_and_waited_for():
+    api = FakeMT5()
+    live = ns(bid=1.5, ask=1.5001, time_msc=1_700_000_000_000)
+    replies = [ns(bid=0.0, ask=0.0, time_msc=0), None, live]
+    api.symbol_info_tick = lambda name: replies.pop(0) if replies else live
+    broker = MT5Broker(config(), "secret", api)
+    with pytest.raises(OperatorError, match="No live tick"):
+        broker.tick("EURUSD.a")
+    sleeps: list[float] = []
+    assert broker.wait_for_tick("EURUSD.a", 5, sleeps.append).bid == Decimal("1.5")
+    assert sleeps == [0.5]
+
+
+def test_wait_for_tick_gives_up_after_timeout():
+    api = FakeMT5()
+    api.symbol_info_tick = lambda name: ns(bid=0.0, ask=0.0, time_msc=0)
+    with pytest.raises(OperatorError, match="No live tick"):
+        MT5Broker(config(), "secret", api).wait_for_tick("EURUSD.a", 0, lambda seconds: None)
+
+
+def test_run_paper_reads_a_live_tick_before_validating_the_server_clock(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from forex import cli
+    from forex.broker.ic_markets_clock import utc_to_server_datetime
+    from forex.config import load_config
+    from forex.runtime import PaperRuntime
+
+    api = FakeMT5()
+    api.ACCOUNT_TRADE_MODE_DEMO = 0
+    api.account_info = lambda: ns(login=23011822, currency="AUD", balance=200, equity=200, leverage=30,
+                                  margin_mode=2, trade_mode=0)
+    api.symbols["GBPUSD.a"] = ns(**{**vars(api.symbols["EURUSD.a"]), "name": "GBPUSD.a", "currency_base": "GBP"})
+    api.symbols["USDJPY.a"] = ns(**{**vars(api.symbols["EURUSD.a"]), "name": "USDJPY.a",
+                                    "currency_base": "USD", "currency_profit": "JPY"})
+    stamp = utc_to_server_datetime(datetime.now(UTC)).replace(tzinfo=UTC).timestamp()
+    api.symbol_info_tick = lambda name: ns(bid=1.1, ask=1.1001, time_msc=stamp * 1000)
+    config = load_config(Path("config.yaml"))
+    config.mode, config.paper.enabled = "paper", True
+    config.paper.database = tmp_path / "paper.sqlite3"
+    config.logging.directory = tmp_path / "logs"
+    config.context.enabled = config.cloud.enabled = config.telegram.enabled = False
+    monkeypatch.setattr(cli, "load_config", lambda path: config)
+    monkeypatch.setattr(cli, "MT5Broker", lambda cfg, password: MT5Broker(cfg, password, api))
+    monkeypatch.setenv("FOREX_MT5_PASSWORD", "fixture-not-a-secret")
+    started = []
+    monkeypatch.setattr(PaperRuntime, "run", lambda self, stop: started.append(self.paper.account.login))
+    assert cli.run_paper(Path("config.yaml")) == 0
+    assert started == [23011822]

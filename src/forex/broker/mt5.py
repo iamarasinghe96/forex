@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
 from types import ModuleType
@@ -136,7 +138,8 @@ class MT5Broker(Broker):
 
     def tick(self, broker_symbol: str) -> Tick:
         raw = self.api.symbol_info_tick(broker_symbol)
-        if raw is None:
+        # A symbol newly added to Market Watch can report an empty tick (zero prices at time 0).
+        if raw is None or raw.time_msc <= 0 or raw.bid <= 0 or raw.ask <= 0:
             raise OperatorError(
                 f"No live tick is available for {broker_symbol}. Confirm Market Watch shows live prices "
                 "and the market is open, then retry."
@@ -144,6 +147,18 @@ class MT5Broker(Broker):
         self._last_tick_timestamp = float(raw.time_msc) / 1000
         timestamp = server_timestamp_to_utc(self._last_tick_timestamp)
         return Tick(broker_symbol, _decimal(raw.bid), _decimal(raw.ask), timestamp)
+
+    def wait_for_tick(self, broker_symbol: str, timeout_seconds: float,
+                      sleep: Callable[[float], None] = time.sleep) -> Tick:
+        """Allow MT5 briefly to deliver a first quote after connecting or selecting a symbol."""
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                return self.tick(broker_symbol)
+            except OperatorError:
+                if time.monotonic() >= deadline:
+                    raise
+                sleep(0.5)
 
     def validate_server_clock(self, now: datetime, tolerance_seconds: int) -> None:
         """Validate the most recently retrieved live tick against the system UTC clock."""

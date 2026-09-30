@@ -512,6 +512,9 @@ def run_paper(config_path: Path) -> int:
         feed = MT5Broker(config.broker, Secrets().mt5_password)
         try:
             account = feed.connect()
+            # The clock check compares against the latest live tick, so read one first.
+            first = feed.resolve_symbol(config.broker.symbols[0])
+            feed.wait_for_tick(first.broker_name, config.broker.connect_timeout_seconds)
             feed.validate_server_clock(datetime.now(UTC), config.market_data.server_clock_tolerance_seconds)
             paper = PaperBroker(config.paper.database, feed, account,
                                 Decimal(str(config.paper.starting_balance_aud)),
