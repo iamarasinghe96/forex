@@ -385,3 +385,16 @@ than 30 s are still rejected. Failures now reach Telegram/Firestore only after p
 paper.error_grace_seconds (30 s), with the OperatorError reason; recovery alerts only follow a
 reported error. Both new tests fail on the old code. 198 passed, Ruff clean. The code
 fingerprint of the observation run changes with this deployment (recorded as a version change).
+
+## Research track (started 2026-09-30, parallel to the paper run)
+
+Existing walk-forward reports (PC) aggregated out-of-sample by factor (gross, no costs):
+confidence bands are inversely related to outcome (below-minimum +0.028 R, LOW -0.033, MEDIUM
+-0.121, HIGH -0.323 over 11,445/10,274/3,175/130 signals) while the live policy skips the
+below-minimum band and raises risk with confidence; trend-continuation setups +0.063 R (9,133)
+vs range mean-reversion -0.064 R (15,891); swing +0.096 vs day -0.041; high volatility -0.075.
+Long/short and trend-up/down asymmetries are treated as period-specific, not candidate rules.
+Added scripts/research_trades.py (per-trade OOS export with conviction; verified on synthetic
+data to reproduce run_walk_forward's aggregate OOS trade count and cumulative R exactly, no
+holdout rows) and scripts/research_summary.py (assumed costs, one-position-per-pair sequencing,
+setup x band table, candidate rules A/A-live/B/C, net by year). Research only; bot unchanged.
