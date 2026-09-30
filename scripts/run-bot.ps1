@@ -6,7 +6,6 @@ $root = (Resolve-Path -LiteralPath $Repository).Path
 Set-Location -LiteralPath $root
 . (Join-Path $PSScriptRoot 'console-helpers.ps1')
 Disable-QuickEdit
-$Host.UI.RawUI.WindowTitle = 'Forex Paper Bot - leave open (minimise is fine)'
 $log = Join-Path $root 'logs\launcher.log'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $log) | Out-Null
 function Write-Note([string]$Text) {
@@ -17,10 +16,12 @@ function Write-Note([string]$Text) {
 $already = @(Get-CimInstance Win32_Process -Filter "Name='forex.exe'" |
     Where-Object { $_.CommandLine -match 'run-paper' })
 if ($already.Count -gt 0) {
-    Write-Host 'The bot is already running in another window. Nothing else to do.' -ForegroundColor Yellow
+    $Host.UI.RawUI.WindowTitle = 'Forex Paper Bot - already running (this window closes itself)'
+    Write-Host 'The bot is already running in its own window. This window will close in 10 seconds.' -ForegroundColor Yellow
     Start-Sleep -Seconds 10
-    exit 0
+    [Environment]::Exit(0)  # Close this window even though the shortcut uses -NoExit.
 }
+$Host.UI.RawUI.WindowTitle = 'Forex Paper Bot - RUNNING - leave open (minimise is fine)'
 Write-Host ''
 Write-Host '  FOREX PAPER BOT (practice money only; no broker orders)' -ForegroundColor Green
 Write-Host '  Leave this window open. You can minimise it and close Remote Desktop with the X.'
