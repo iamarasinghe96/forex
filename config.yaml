@@ -55,6 +55,9 @@ analysis:
   swing_trend_threshold: 0.68
   # Range mean-reversion lost in every OOS year (research_summary.py); trend setups only.
   allowed_setups: [TREND_CONTINUATION_BREAKOUT_PULLBACK]
+  # Journal J6 switches (UNTESTED; defaults keep current behaviour):
+  high_volatility_blocks_trend: true   # J6-a: false = strong trends still trade in top-decile volatility.
+  trend_efficiency_window: null        # J6-b: e.g. 10 H4 bars for faster trend detection (null = 20).
 
 # Layer 4 research-only assumptions. They never alter strategy parameters or place orders.
 backtest:
@@ -136,3 +139,7 @@ paper:
   error_grace_seconds: 30      # Failures shorter than this are logged locally, not alerted.
   halt_file: data/HALT_PAPER
   no_trade_hours: 168
+  # Journal J6-c exits (UNTESTED; paper only). Use a target above 1.5 so small price moves during
+  # review cannot push the reward below the 1.5R minimum.
+  target_reward_risk: null      # e.g. 3.0 (null = the 1.5R minimum target).
+  atr_trailing_multiple: null   # e.g. 3.0 = trail 3x H1 ATR behind price once a trade is +1R.

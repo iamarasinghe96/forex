@@ -289,7 +289,8 @@ def feature_state(candles: Sequence[Candle], config: AnalysisConfig) -> FeatureS
             raise ValueError("prepared candle configuration mismatch")
         # Every non-recursive feature uses only these trailing observations. Recursive
         # indicators below retain their exact full-history seed and arithmetic order.
-        candles = candles[-max(required, config.structure_window + 1, config.rsi_period + 1, 6):]
+        candles = candles[-max(required, config.structure_window + 1, config.rsi_period + 1, 6,
+                               (config.trend_efficiency_window or 0) + 1):]
     closes = [float(c.close) for c in candles]
     if prepared is None:
         fast, slow, context = (ema(closes, period) for period in
@@ -314,9 +315,10 @@ def feature_state(candles: Sequence[Candle], config: AnalysisConfig) -> FeatureS
     high = max(float(c.high) for c in candles[-config.structure_window - 1:-1])
     low = min(float(c.low) for c in candles[-config.structure_window - 1:-1])
     width = max(high - low, 1e-12)
+    window = config.trend_efficiency_window or config.structure_window
     movements = sum(abs(closes[i] - closes[i - 1]) for i in range(
-        len(closes) - config.structure_window + 1, len(closes)))
-    efficiency = abs(closes[-1] - closes[-config.structure_window]) / max(movements, 1e-12)
+        len(closes) - window + 1, len(closes)))
+    efficiency = abs(closes[-1] - closes[-window]) / max(movements, 1e-12)
     recent = candles[-1]
     body = abs(float(recent.close - recent.open))
     candle_range = max(float(recent.high - recent.low), 1e-12)
@@ -362,7 +364,8 @@ def calculate_regime(features: FeatureState, config: AnalysisConfig) -> RegimeSt
                          (v["rsi"] - 50) / 25)
     breakout = max(-1.0, min(1.0, v["breakout_high_atr"] - v["breakout_low_atr"]))
     vol = v["volatility_rank"]
-    if vol >= 0.9:
+    strong_trend = trend >= config.trend_threshold and abs(direction) > 0.15
+    if vol >= 0.9 and (config.high_volatility_blocks_trend or not strong_trend):
         label = RegimeLabel.HIGH_VOLATILITY
     elif trend >= config.trend_threshold and direction > 0.15:
         label = RegimeLabel.TREND_UP

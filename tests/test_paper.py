@@ -199,7 +199,9 @@ def test_notification_outage_retains_delivery_cursor(tmp_path: Path) -> None:
     assert worker.once() == 0
 
 
-def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("target_rr", [None, 3.0])
+def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_rr: float | None) -> None:
     from test_analysis import candles, compact_config
     from test_risk import candidate
 
@@ -218,6 +220,7 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_
     config.execution.session_rollover_hour_utc = 0
     config.paper.heartbeat_file = tmp_path / "heartbeat.json"
     config.paper.halt_file = tmp_path / "HALT"
+    config.paper.target_reward_risk = target_rr
     series = {frame: candles(frame, [1.1] * 60, start=NOW-frame.duration*60) for frame in Timeframe}
     feed.candles.side_effect = lambda symbol, frame, start, end: series[frame]
     snapshot = analyse_market("EURUSD", series[Timeframe.H1], series[Timeframe.H4], NOW, config.analysis).snapshot
@@ -226,6 +229,9 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_
     runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)), lambda: NOW)
     runtime.cycle()
     assert len(paper.positions()) == 1
+    position = paper.positions()[0]
+    assert (position.target - position.entry) / (position.entry - position.stop) >= Decimal(str(target_rr or 1.5))
+    assert runtime.trailing_atr["EURUSD"] > 0
     opened = next(e for e in runtime.journal.events() if e.kind == "trade_opened")
     assert set(opened.payload["decision_provenance"]) == {"candidate", "risk_decision", "context_review"}
     assert opened.payload["trade_style"] == "DAY"
@@ -341,3 +347,18 @@ def test_brief_flapping_failures_do_not_alert_the_phone(tmp_path: Path, monkeypa
     runtime.run(Event(), maximum_cycles=40)
     kinds = [e.kind for e in runtime.journal.events()]
     assert "error" not in kinds and "alert" not in kinds
+
+
+def test_optional_atr_trailing_stop_starts_after_one_r(tmp_path: Path) -> None:
+    paper, feed = setup(tmp_path)
+    paper.submit(intent())  # Entry 1.1, stop 1.09 (1R = 0.01).
+    atr = {"EURUSD": Decimal("0.002")}
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.105"), Decimal("1.1051"), NOW)
+    paper.manage(NOW, atr_by_symbol=atr, atr_multiple=Decimal(2))
+    assert paper.positions()[0].stop == Decimal("1.09")  # Below +1R: unchanged.
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.111"), Decimal("1.1111"), NOW)
+    paper.manage(NOW, atr_by_symbol=atr, atr_multiple=Decimal(2))
+    assert paper.positions()[0].stop == Decimal("1.107")  # Bid minus 2 x ATR.
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.109"), Decimal("1.1091"), NOW)
+    paper.manage(NOW, atr_by_symbol=atr, atr_multiple=Decimal(2))
+    assert paper.positions()[0].stop == Decimal("1.107")  # Never loosens.

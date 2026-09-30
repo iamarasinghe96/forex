@@ -88,6 +88,8 @@ class PaperRuntime:
         self.started = clock()
         self.next_analysis = self.started
         self.entry_blocks: set[str] = set()
+        # Latest H1 ATR per symbol for the optional paper trailing stop (paper.atr_trailing_multiple).
+        self.trailing_atr: dict[str, Decimal] = {}
         self.last_health_journal: tuple[datetime, str] | None = None
         # (error type, failing since, last reported or None, consecutive failed cycles)
         self.failure: tuple[str, datetime, datetime | None, int] | None = None
@@ -122,7 +124,9 @@ class PaperRuntime:
         before = self.paper.state(now)
         self.sessions.observe_equity(self.session_id(now), before.balance, before.equity,
                                      self.policy, now)
-        self.paper.manage(now)
+        trail = self.config.paper.atr_trailing_multiple
+        self.paper.manage(now, atr_by_symbol=self.trailing_atr,
+                          atr_multiple=Decimal(str(trail)) if trail is not None else None)
         self.paper.journal_fills(self.journal)
         account = self.paper.state(now)
         day = self.session_id(now)
@@ -147,6 +151,7 @@ class PaperRuntime:
                 self.candles.upsert(recent)
                 bars[timeframe] = self.candles.load(symbol, timeframe)
             result = analyse_market(symbol, bars[Timeframe.H1], bars[Timeframe.H4], now, self.config.analysis)
+            self.trailing_atr[symbol.upper()] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue
@@ -169,7 +174,10 @@ class PaperRuntime:
             fresh_now = self.clock()
             daily = self.sessions.observe_equity(day, snap.account.balance, snap.account.equity,
                                                  self.policy, fresh_now)
-            risk = evaluate_candidate(candidate, snap.account, snap.spec, entry, stop, None,
+            target_rr = self.config.paper.target_reward_risk
+            objective = (None if target_rr is None else
+                         entry + (entry - stop) * Decimal(str(target_rr)))
+            risk = evaluate_candidate(candidate, snap.account, snap.spec, entry, stop, objective,
                                       PortfolioRiskState(tuple(p.risk_position() for p in snap.positions)),
                                       daily, self.policy)
             self.emit("risk_decision", identity, {**payload, "risk": json_value(risk)}, fresh_now)

@@ -247,3 +247,30 @@ def test_disabled_setup_family_becomes_a_recorded_no_trade() -> None:
     assert result.candidate is None
     assert result.snapshot.no_candidate_reason == (
         "RANGE_MEAN_REVERSION setups are disabled by analysis.allowed_setups")
+
+
+def test_high_volatility_block_can_let_a_strong_trend_through() -> None:
+    values = [1.0]
+    for index in range(39):
+        values.append(values[-1] + (0.001 if index < 34 else 0.006))  # Accelerating trend.
+    h4 = candles(Timeframe.H4, values)
+    h1 = candles(Timeframe.H1, [1 + i * 0.001 for i in range(40)])
+    evaluation = max(h1[-1].timestamp_utc + timedelta(hours=1),
+                     h4[-1].timestamp_utc + timedelta(hours=4))
+    blocked = analyse_market("EURUSD", h1, h4, evaluation, compact_config())
+    assert blocked.snapshot.regime.label is RegimeLabel.HIGH_VOLATILITY
+    assert blocked.candidate is None
+    allowed = analyse_market("EURUSD", h1, h4, evaluation,
+                             compact_config(high_volatility_blocks_trend=False))
+    assert allowed.snapshot.regime.label is RegimeLabel.TREND_UP
+    assert allowed.candidate is not None and allowed.candidate.side is Side.LONG
+
+
+def test_trend_efficiency_window_measures_only_recent_bars() -> None:
+    values = ([1 + 0.01 * i for i in range(30)] + [1.29 - 0.01 * i for i in range(7)]
+              + [1.23 + 0.01 * i for i in range(3)])
+    default = feature_state(candles(Timeframe.H1, values), compact_config())
+    faster = feature_state(candles(Timeframe.H1, values),
+                           compact_config(trend_efficiency_window=3))
+    assert default.values["directional_efficiency"] == pytest.approx(1 / 3)
+    assert faster.values["directional_efficiency"] == pytest.approx(1.0)

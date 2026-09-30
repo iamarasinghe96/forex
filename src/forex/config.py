@@ -84,6 +84,10 @@ class AnalysisConfig(BaseModel):
     # Setup families allowed to produce candidates; others are recorded as no-trade decisions.
     allowed_setups: list[Literal["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"]] = Field(
         default=["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"], min_length=1)
+    # J6-a: when False, a strong H4 trend is labelled a trend even in the top volatility decile.
+    high_volatility_blocks_trend: bool = True
+    # J6-b: bars for the directional-efficiency trend measure; None keeps structure_window.
+    trend_efficiency_window: int | None = Field(default=None, ge=3)
 
     @model_validator(mode="after")
     def ordered_periods(self) -> AnalysisConfig:
@@ -232,6 +236,10 @@ class PaperConfig(BaseModel):
     error_grace_seconds: float = Field(default=30, ge=0)
     halt_file: Path = Path("data/HALT_PAPER")
     no_trade_hours: float = Field(default=168, gt=0)
+    # J6-c exits: target in R (None = risk.minimum_reward_risk) and an ATR trailing stop that
+    # starts once a trade reaches +1R (None = off). Paper only.
+    target_reward_risk: float | None = Field(default=None, ge=1.5, allow_inf_nan=False)
+    atr_trailing_multiple: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class AppConfig(BaseModel):

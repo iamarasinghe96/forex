@@ -169,3 +169,18 @@ def test_runtime_style_decision_survives_small_price_moves_during_review(tmp_pat
     loss = (intent.entry - intent.stop) / spec().tick_size * spec().tick_value * intent.volume
     assert loss <= reviewed.plan.actual_risk_amount
     assert (intent.target - intent.entry) / (intent.entry - intent.stop) >= POLICY.minimum_reward_risk
+
+
+def test_runtime_requested_objective_sets_a_larger_paper_target(tmp_path: Path) -> None:
+    from forex.risk import PortfolioRiskState, decide_risk
+
+    # paper.target_reward_risk: 3R objective requested at evaluation time.
+    decision = decide_risk(candidate(), account(), spec(), Decimal("1.10"), Decimal("1.09"), Decimal("1.13"),
+                           PortfolioRiskState(()), DailyRiskState("day", Decimal(10000), Decimal(10000)), POLICY)
+    broker = FakeExecutionBroker()
+    broker.ask = Decimal("1.10")
+    runner = service(tmp_path, broker)
+    reviewed = apply_review(decision, ReviewResponse.model_validate_json(response()), spec())
+    record = runner.execute(candidate(), decision, reviewed, NOW, "day", Decimal(10000))
+    assert record.state == "ACCEPTED", record.detail
+    assert broker.calls[0].target == Decimal("1.13")
