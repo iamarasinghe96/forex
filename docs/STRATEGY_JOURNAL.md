@@ -73,3 +73,59 @@ than 5. If price is "fractal", is the higher timeframe adding anything?
 generating ideas. The most promising for us are J1-a and J1-b: they are simple, use data we
 already have, and add a genuinely new piece of information (the daily and weekly picture) rather
 than re-filtering the same signal.
+
+---
+
+## Entry 2 — 2026-09-30 — "Master Trading With Multiple Time Frames" (Investopedia)
+
+Source: Investopedia article by Joey Fundora, updated 12 October 2025, part of its "Guide to
+Swing Trading" series. Educational article, reviewed and fact-checked by the publisher; the
+worked example is a single stock (Bath & Body Works, BBWI), not forex.
+
+**Main claims, condensed**
+
+1. *Three timeframes, each with a job:* a long one for the **primary trend**, a middle one for the
+   **trading signal**, a short one to **refine entry and exit**. (Standard teaching.)
+2. *Typical stacks* (roughly 4-6x apart):
+   - swing trader: weekly (trend) / daily (signal) / 60-minute (entry)
+   - day trader: 60-minute (trend) / 15-minute (signal) / 5-minute (entry)
+   - position trader: monthly (trend) / weekly (signal) / daily (entry)
+3. *Longer timeframe = more reliable signals;* shorter charts carry more noise and false moves.
+   (Plausible. Our data leans the same way: swing trades beat day trades.)
+4. *Disagreement is a warning:* when timeframes conflict, pause or reassess the trade.
+5. *Worked example (BBWI stock, 2023-2024):* weekly price crosses above its 12-week simple moving
+   average -> daily price crosses above its 10-day average and closes above a resistance line ->
+   enter on the 4-hour chart when the **KST** momentum indicator crosses up; exit when the KST
+   crosses down. Quoted gains of about 27%, 7% and 5% on three trades.
+6. *Indicators said to work across timeframes:* moving averages, RSI, MACD, Bollinger Bands,
+   Fibonacci retracements, stochastic oscillator.
+7. *Risks it admits:* conflicting signals, over-trading, more time, stress and transaction costs.
+
+**Critical notes**
+
+- The example is **one hand-picked stock over a few months, described after the fact**. It shows
+  how the method is applied, not that it works: nothing is said about the times the same signals
+  lost money (hindsight / cherry-picking). Evidence level: opinion/illustration.
+- The swing-trader stack (weekly / daily / 1-hour) is **slower than our bot's** (4-hour / 1-hour).
+  That fits our finding that slower trades held up better and are less eaten by costs.
+- KST ("Know Sure Thing", Martin Pring) is a momentum indicator built from several smoothed
+  rates of change; the article uses its crossovers for both entry and exit.
+
+**Candidate ideas to test later (not yet tested)**
+
+| # | Plain-language rule | Test sketch | Data we have? |
+|---|---|---|---|
+| J2-a | **Slower "swing stack":** only buy when price is above its 12-week average (weekly trend), the daily price has just crossed above its 10-day average (signal), then enter on the 1-hour or 4-hour chart; mirror for sells. | Build weekly/daily candles from our hourly data; one trade per pair at a time; 2012-2018 and 2021-2025. Expect few trades, so pool all three pairs. | Yes. |
+| J2-b | **Exit on a momentum turn** (e.g. KST or MACD crossing back) instead of a fixed 1.5x target or trailing stop. | Same entries, compare exit rules. | Yes. |
+| J2-c | When timeframes disagree, don't trade (claim 4). | Same as J1-a — merged there. | Yes. |
+
+---
+
+## Recurring themes across entries
+
+| Theme | Sources | Status |
+|---|---|---|
+| Higher-timeframe trend agreement (daily/weekly must agree before trading) | Entry 1 (claims 1, 3), Entry 2 (claims 1, 4) | Untested. Strongest recurring idea: J1-a / J2-a. |
+| Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3) | Partly supported by our data (swing > day trades). |
+| Higher-timeframe support/resistance levels matter | Entry 1 (claims 3, 5), Entry 2 (example: close above resistance) | Untested: J1-b. |
+| News/scheduled events can override charts | Entry 1 (claim 10) | Untested: J1-d (needs an economic calendar). |
