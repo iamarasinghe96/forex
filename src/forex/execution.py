@@ -97,6 +97,11 @@ class ExecutionBroker(Protocol):
     def evidence(self, start: datetime, end: datetime) -> tuple[BrokerEvidence, ...]: ...
 
 
+# Quotes are timestamped by the broker and compared with a cycle time read slightly earlier on
+# the VPS; allow a quote to appear this much newer than "now" (latency and clock skew).
+QUOTE_FUTURE_TOLERANCE_SECONDS = 5.0
+
+
 @dataclass(frozen=True)
 class ExecutionRecord:
     client_id: str
@@ -195,7 +200,8 @@ class ExecutionService:
         if (not snapshot.connected or not snapshot.entries_allowed or
                 not snapshot.tick.ask.is_finite() or not snapshot.tick.bid.is_finite() or
                 not 0 < snapshot.tick.bid <= snapshot.tick.ask or
-                not 0 <= age <= self.quote_age or snapshot.observed_at_utc != now):
+                not -QUOTE_FUTURE_TOLERANCE_SECONDS <= age <= self.quote_age or
+                snapshot.observed_at_utc != now):
             return ExecutionRecord(client_id, "BLOCKED", None,
                                    "Connection, market permission or quote freshness check failed.")
         if snapshot.account.mode is AccountMode.NETTING and any(

@@ -372,3 +372,16 @@ Operator usability request (2026-09-30): one-click VPS start and a simple phone 
   36661534530 (attempt 2, 072aa09) passed model, Firestore-rules, browser and build checks and
   deployed to https://iamarasinghe96.github.io/forex/. Phone sign-in on the live page is not yet
   verified (this agent's network cannot reach github.io).
+
+2026-09-30 03:00Z: first simulated trade opened (USDJPY.a, trade_opened 03:00:10Z) after the
+fresh-target fix. Immediately afterwards cycles failed intermittently with OperatorError and
+recovered every 5-20 s, sending an error and a recovered Telegram alert per blip. Cause (code
+analysis, reproduced by test): the cycle reads "now" once, then later reads quotes; with an open
+position more work happens first, so a quote timestamped after "now" gave a negative age and
+PaperBroker._quote rejected it as stale/invalid. Consequence: skipped stop/target management on
+failed cycles and alert spam. Fix (needs deployment): accept quotes up to 5 s newer than the
+cycle time (QUOTE_FUTURE_TOLERANCE_SECONDS, also in the pre-submit check); stale quotes older
+than 30 s are still rejected. Failures now reach Telegram/Firestore only after persisting
+paper.error_grace_seconds (30 s), with the OperatorError reason; recovery alerts only follow a
+reported error. Both new tests fail on the old code. 198 passed, Ruff clean. The code
+fingerprint of the observation run changes with this deployment (recorded as a version change).

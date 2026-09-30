@@ -16,6 +16,7 @@ from forex.broker.base import Broker
 from forex.domain import AccountState, Tick, _require_utc
 from forex.errors import OperatorError
 from forex.execution import (
+    QUOTE_FUTURE_TOLERANCE_SECONDS,
     BrokerEvidence,
     BrokerPosition,
     ExecutionSnapshot,
@@ -57,7 +58,7 @@ class PaperBroker:
         tick = self.feed.tick(symbol)
         if (not tick.bid.is_finite() or not tick.ask.is_finite() or
                 not 0 < tick.bid <= tick.ask or
-                not 0 <= (now - tick.time_utc).total_seconds() <= self.quote_age):
+                not -QUOTE_FUTURE_TOLERANCE_SECONDS <= (now - tick.time_utc).total_seconds() <= self.quote_age):
             raise OperatorError("Paper quote is stale or invalid. Halt entries and restore market data.")
         return tick
 

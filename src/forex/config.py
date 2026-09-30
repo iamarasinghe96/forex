@@ -225,6 +225,8 @@ class PaperConfig(BaseModel):
     health_journal_seconds: float = Field(default=60, gt=0, le=110)
     # A persistent failure (e.g. weekend quotes) is reported once, then at most this often.
     error_repeat_seconds: float = Field(default=3600, gt=0)
+    # Failures shorter than this are logged locally only (no phone alert for one-cycle blips).
+    error_grace_seconds: float = Field(default=30, ge=0)
     halt_file: Path = Path("data/HALT_PAPER")
     no_trade_hours: float = Field(default=168, gt=0)
 

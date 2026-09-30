@@ -131,5 +131,6 @@ paper:
   heartbeat_file: data/paper-heartbeat.json
   health_journal_seconds: 60   # Journal/Firestore health cadence; heartbeat file stays every cycle.
   error_repeat_seconds: 3600   # Repeated identical cycle failures: first, then hourly, then recovery.
+  error_grace_seconds: 30      # Failures shorter than this are logged locally, not alerted.
   halt_file: data/HALT_PAPER
   no_trade_hours: 168

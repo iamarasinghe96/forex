@@ -294,7 +294,48 @@ def test_persistent_cycle_failure_is_reported_once_then_hourly_then_recovered(
     monkeypatch.setattr(runtime, "cycle", cycle)
     runtime.run(Event(), maximum_cycles=801)
     errors = [e.payload for e in runtime.journal.events() if e.kind == "error"]
-    assert [e["consecutive_failed_cycles"] for e in errors] == [1, 721]
+    # First reported once the failure has lasted error_grace_seconds (30 s), then hourly.
+    assert [e["consecutive_failed_cycles"] for e in errors] == [7, 727]
     alerts = [e.payload["reason"] for e in runtime.journal.events() if e.kind == "alert"]
     assert len(alerts) == 1 and alerts[0].startswith("Recovered after 800 failed cycles (OperatorError)")
     feed.place_order.assert_not_called()
+
+
+def test_quote_slightly_newer_than_cycle_time_is_accepted(tmp_path: Path) -> None:
+    paper, feed = setup(tmp_path)
+    paper.submit(intent())
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), NOW + timedelta(seconds=0.4))
+    assert paper.state(NOW).equity  # A tick received after the cycle started is not stale.
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), NOW + timedelta(seconds=60))
+    with pytest.raises(OperatorError, match="stale or invalid"):
+        paper.state(NOW)
+
+
+def test_brief_flapping_failures_do_not_alert_the_phone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from threading import Event
+
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.runtime import PaperRuntime
+
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.context.enabled = config.cloud.enabled = config.telegram.enabled = False
+    config.execution.session_rollover = None
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    config.paper.poll_seconds = 0.001
+    ticks = iter(range(10_000))
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)),
+                           lambda: NOW + timedelta(seconds=5 * next(ticks)))
+    outcomes = [OperatorError("Paper quote is stale or invalid."), None] * 20
+
+    def cycle() -> None:
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+    monkeypatch.setattr(runtime, "cycle", cycle)
+    runtime.run(Event(), maximum_cycles=40)
+    kinds = [e.kind for e in runtime.journal.events()]
+    assert "error" not in kinds and "alert" not in kinds

@@ -89,8 +89,8 @@ class PaperRuntime:
         self.next_analysis = self.started
         self.entry_blocks: set[str] = set()
         self.last_health_journal: tuple[datetime, str] | None = None
-        # (error type, failing since, last reported, consecutive failed cycles)
-        self.failure: tuple[str, datetime, datetime, int] | None = None
+        # (error type, failing since, last reported or None, consecutive failed cycles)
+        self.failure: tuple[str, datetime, datetime | None, int] | None = None
         self.config_fingerprint = hashlib.sha256(config.model_dump_json().encode()).hexdigest()
         source = hashlib.sha256()
         for path in sorted(Path(__file__).parent.rglob("*.py")):
@@ -260,13 +260,17 @@ class PaperRuntime:
                 try:
                     self.cycle()
                 except Exception as exc:  # noqa: BLE001 - persist failure and stop entries until next healthy cycle
-                    self.record_failure(type(exc).__name__, self.clock())
+                    # OperatorError messages are written by this project and contain no secrets.
+                    detail = str(exc)[:300] if isinstance(exc, OperatorError) else None
+                    self.record_failure(type(exc).__name__, self.clock(), detail)
                 else:
                     if self.failure is not None:
                         now = self.clock()
-                        kind, since, _, count = self.failure
-                        self.emit("alert", "recovered:" + now.isoformat(), {
-                            "reason": f"Recovered after {count} failed cycles ({kind}) since {since.isoformat()}"}, now)
+                        kind, since, reported, count = self.failure
+                        message = f"Recovered after {count} failed cycles ({kind}) since {since.isoformat()}"
+                        logging.getLogger("forex.paper").info("%s", message)
+                        if reported is not None:
+                            self.emit("alert", "recovered:" + now.isoformat(), {"reason": message}, now)
                         self.failure = None
                 cycles += 1
                 if maximum_cycles is None or cycles < maximum_cycles:
@@ -280,21 +284,26 @@ class PaperRuntime:
             self.feed.disconnect()
 
 
-    def record_failure(self, error_type: str, now: datetime) -> None:
-        """Every failed cycle is logged locally; the journal (Telegram/cloud) gets the first
-        failure of a streak and then one reminder per error_repeat_seconds, not one per cycle."""
-        logging.getLogger("forex.paper").error("Paper cycle failed: %s; entries halted.", error_type)
+    def record_failure(self, error_type: str, now: datetime, detail: str | None = None) -> None:
+        """Every failed cycle is logged locally. The journal (Telegram/cloud) gets a failure only
+        once it has persisted for error_grace_seconds, then one reminder per error_repeat_seconds."""
+        logging.getLogger("forex.paper").error("Paper cycle failed: %s%s; entries halted.", error_type,
+                                               f" ({detail})" if detail else "")
         previous = self.failure
         if previous is None or previous[0] != error_type:
-            self.failure = (error_type, now, now, 1)
+            self.failure = (error_type, now, None, 1)
         else:
-            due = (now - previous[2]).total_seconds() >= self.config.paper.error_repeat_seconds
-            self.failure = (error_type, previous[1], now if due else previous[2], previous[3] + 1)
-            if not due:
-                return
-        _, since, _, count = self.failure
+            self.failure = (error_type, previous[1], previous[2], previous[3] + 1)
+        _, since, reported, count = self.failure
+        paper = self.config.paper
+        due = ((now - since).total_seconds() >= paper.error_grace_seconds if reported is None
+               else (now - reported).total_seconds() >= paper.error_repeat_seconds)
+        if not due:
+            return
+        self.failure = (error_type, since, now, count)
         self.emit("error", now.isoformat(), {
-            "error_type": error_type, "consecutive_failed_cycles": count, "failing_since_utc": since,
+            "error_type": error_type, "reason": detail or error_type, "consecutive_failed_cycles": count,
+            "failing_since_utc": since,
             "action": "Entries halted while this persists; inspect local logs and market data"}, now)
 
 
