@@ -64,11 +64,8 @@ class MT5Broker(Broker):
                 "MT5 is open but disconnected. Check the VPS internet connection and the connection "
                 "indicator in the lower-right of MT5, then retry."
             )
-        if not terminal.trade_allowed:
-            raise OperatorError(
-                "MT5 AutoTrading is disabled by the client (the condition behind retcode 10027). "
-                "In MT5 press the 'Algo Trading' toolbar button until it is enabled, then retry."
-            )
+        # Read-only market data does not need terminal Algo Trading; keeping it off means an
+        # attached Expert Advisor cannot trade. MT5ExecutionBroker requires it separately.
         info = self.api.account_info()
         if info is None:
             raise OperatorError("MT5 returned no account details. Log in again in MT5, then retry.")

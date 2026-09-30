@@ -204,3 +204,29 @@ This supersedes the earlier instruction to implement mapping; review the existin
 Next: read-only VPS inventory at C:/forex, review/deploy pinned code, securely adapt credentials,
 verify actual VPS .a specs and resolve data-only connection/Algo Trading requirement before
 supervised PAPER startup. No unattended run or VPS checks completed by this PC result.
+
+
+## Claude Code session — 30 September 2026 (VPS inventory and data-only MT5 connection)
+
+Operator confirmed: Telegram PAPER setup message received on phone; MT5 password and
+Telegram token were rotated after the earlier screenshot exposure.
+
+Read-only VPS inventory (C:/forex, operator-run): branch main at 6b0273d8, no uncommitted
+code changes, untracked reports/ only, no stashes. Python 3.13.15 in .venv. data/forex.sqlite3
+(2,301,952 bytes, 29 Sep) holds candles 17,271 rows; outbox/risk_sessions empty; no
+data/paper.sqlite3. .secrets/firebase-admin.json absent. One MT5 terminal, no Python
+processes, no Forex scheduled tasks. Integration branch was fetched but not checked out.
+
+Backup at C:/forex-backups/before-paper-20260930-100312: config.yaml, .env (existence
+confirmed without printing), code-version.txt, reports/, and forex.sqlite3 made with the
+SQLite backup API from a read-only source; integrity_check ok.
+
+Proposed change (branch claude/determined-thompson-f4ewei, not merged, needs operator review):
+MT5Broker.connect() no longer requires terminal Algo Trading, so the read-only paper data
+feed can run with Algo Trading OFF (attached EAs cannot trade). MT5ExecutionBroker.connect()
+now requires it, and its per-order _guard still checks terminal/account trade permissions,
+demo account mode and login. Tests: 184 passed on Linux Python 3.13; Ruff clean; mypy clean
+except the two expected Windows-only msvcrt errors in operations.py on a non-Windows checker.
+
+Next: operator decides which reviewed commit the VPS checks out; then install extras, run
+tests on the VPS, transfer the Firebase key securely, and run read-only .a symbol checks.

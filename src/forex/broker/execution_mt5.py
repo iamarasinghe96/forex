@@ -9,6 +9,7 @@ from typing import Any
 from forex.analysis import Side
 from forex.broker.ic_markets_clock import utc_to_server_datetime
 from forex.broker.mt5 import MT5Broker, _decimal
+from forex.domain import AccountState
 from forex.errors import OperatorError
 from forex.execution import (
     BrokerEvidence,
@@ -37,6 +38,16 @@ class MT5ExecutionBroker(MT5Broker):
     """No command enables this automatically; credentials and demo verification are deferred."""
 
     demo_execution_enabled: bool = False
+
+    def connect(self) -> AccountState:
+        account = super().connect()
+        terminal = self.api.terminal_info()
+        if terminal is None or not terminal.trade_allowed:
+            raise OperatorError(
+                "MT5 AutoTrading is disabled by the client (the condition behind retcode 10027). "
+                "In MT5 press the 'Algo Trading' toolbar button until it is enabled, then retry."
+            )
+        return account
 
     def _guard(self) -> None:
         account, terminal = self.api.account_info(), self.api.terminal_info()

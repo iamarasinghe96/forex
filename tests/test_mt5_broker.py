@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from forex.broker.execution_mt5 import MT5ExecutionBroker
 from forex.broker.ic_markets_clock import server_timestamp_to_utc, utc_to_server_datetime
 from forex.broker.mt5 import MT5Broker
 from forex.config import BrokerConfig, MarketDataConfig
@@ -80,11 +81,17 @@ def test_connect_resolves_suffix_and_computes_live_converted_pip_value():
     assert "EURUSD.a" in api.selected and "USDAUD.a" in api.selected
 
 
-def test_autotrading_disabled_has_button_instructions():
+def test_read_only_connect_does_not_require_algo_trading():
+    api = FakeMT5()
+    api.terminal_info = lambda: ns(connected=True, trade_allowed=False)
+    assert MT5Broker(config(), "secret", api).connect().currency == "AUD"
+
+
+def test_execution_connect_with_algo_trading_disabled_has_button_instructions():
     api = FakeMT5()
     api.terminal_info = lambda: ns(connected=True, trade_allowed=False)
     with pytest.raises(OperatorError, match="Algo Trading"):
-        MT5Broker(config(), "secret", api).connect()
+        MT5ExecutionBroker(config(), "secret", api).connect()
 
 
 def test_account_above_leverage_cap_fails_loudly():
