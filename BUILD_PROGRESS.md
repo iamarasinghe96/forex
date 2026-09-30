@@ -471,3 +471,16 @@ Primary: trend55 + trailing, all three pairs; pass = net average R > 0 and net P
 means the exit model is not deployed. Secondary (informational only, cannot rescue a failed
 primary): the same rule on USDJPY alone. Expected sample about 60 trades, so a pass is weak
 evidence while a clear loss is informative.
+
+### Final holdout result (used once, 2026-09-30) and research status
+
+Window 2025-09-28T16:00Z to 2026-09-28 (5,642 exported signals). Primary trend55 + trailing,
+all pairs, net: 56 trades, -0.303 R, PF 0.51 -> VERDICT FAIL (EURUSD -0.080 R/18, GBPUSD
+-0.321 R/17, USDJPY -0.480 R/21). Per the registration the trailing exit is NOT deployed; the
+secondary USDJPY-only observation also failed, so the USDJPY pattern is treated as
+period-specific. The final holdout is now consumed; any further look at it is exploration only.
+Overall status: no variant of the current signal (all setups, trend-only, confirmation entry,
+trailing exit) has shown a reliable edge across 2012-2018, 2021-2025 and the final year. The
+live paper bot remains trend-only with the fixed 1.5R target for observation; real-money use of
+this strategy is not recommended. Operator is studying trading to propose new hypotheses, which
+must be pre-registered and tested on 2012-2018 and 2021-2025 (a fresh holdout will be needed).
