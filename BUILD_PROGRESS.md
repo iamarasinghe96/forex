@@ -237,3 +237,17 @@ pip install -e .[mt5,firebase,dev] completed in the VPS .venv (Python 3.13.15). 
 184 passed, Ruff clean, mypy "no issues found in 31 source files". Nothing started; paper,
 demo, context, Telegram and cloud flags all still disabled. reports/ is now git-ignored.
 Next: transfer PC .env and Firebase key to the VPS via RDP, fix the key path, verify presence.
+
+VPS credentials: operator copied PC .env (813 bytes; old 311-byte VPS .env backed up) and
+.secrets/firebase-admin.json via RDP. Firebase path line rewritten to C:/forex/.secrets/...
+All seven FOREX_* settings present (values never displayed); key file parses as
+service_account for forex-paper-bot. Operator confirmed MT5 password/Telegram token rotated.
+
+VPS read-only MT5 check (2026-09-30T00:32:47Z, pinned ccd00d7): account 23011822
+ICMarketsAU-Demo, DEMO, AUD, 1:30, broker balance AUD 200. EURUSD.a, GBPUSD.a, USDJPY.a all
+FULL (mode 4) and visible in Market Watch; plain symbols CLOSE_ONLY. Live ticks 2-10 s old;
+server clock check OK. Terminal Algo Trading switched OFF by operator (was ON) and the
+read-only connection worked with it off. Close-only blocker resolved on the VPS. No orders.
+Note: first run returned empty 0.0 ticks (time 0) straight after the .a symbols were
+selected; MT5Broker.tick() does not reject an empty tick (paper freshness checks still
+reject it as stale). Candidate hardening for review, not changed.
