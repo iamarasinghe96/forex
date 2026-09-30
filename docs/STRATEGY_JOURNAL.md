@@ -194,12 +194,44 @@ Program", US$697; the operator pasted a detailed summary, not the video). Forex-
 
 ---
 
+## Entry 4 — 2026-09-30 — Research notes on the bot's building blocks
+
+Web research on the techniques the bot uses (full reading list: docs/LEARNING_RESOURCES.md).
+
+1. **Trend following has real academic support - on slower horizons.** Moskowitz, Ooi and Pedersen
+   (Journal of Financial Economics, 2012) found returns persisting over **1 to 12 months** across 58
+   futures markets including currencies, partly reversing later. Our bot trades a 1-hour/4-hour
+   horizon with 1.5x targets - far shorter than the horizon where the evidence is strongest.
+   Supports testing slower versions (J2-a, daily/weekly trend). Evidence level: tested (academic).
+2. **Kaufman's Efficiency Ratio** = net price change over N bars divided by the sum of bar-to-bar
+   moves (1 = straight line, near 0 = chop). Our bot's "directional efficiency" is the same idea,
+   so its trend/range labelling rests on a well-known measure.
+3. **USDJPY and the carry trade.** USDJPY tends to trend while US rates sit well above Japanese
+   rates (investors earn the gap by holding dollars), and can fall sharply when that trade unwinds.
+   Plausible explanation for USDJPY leading in 2012-2015 and 2021-2024 and failing in the final
+   year; interest-rate differentials are an input the bot does not use. Evidence level: plausible.
+4. **Data-mining bias is the normal failure mode.** Aronson's *Evidence-Based Technical Analysis*
+   reports that profitable-looking backtested rules were, in the cases it examined, explained by
+   data-mining bias. Consistent with our failed candidates; keep pre-registering.
+5. **Retail reality in Australia.** ASIC found only 32% of retail CFD clients profitable after fees
+   (19% of the most active). Costs and over-trading are the main killers - consistent with our
+   finding that frequent, small-stop trading lost most.
+
+**Candidate ideas added**
+
+| # | Plain-language rule | Test sketch | Data we have? |
+|---|---|---|---|
+| J4-a | **Slow trend following:** hold the direction of the past 3-12 month price change, exiting when it flips (classic time-series momentum), with volatility-based position size. | Daily bars built from our hourly data; very few trades per year, so results need all three pairs and both periods. | Yes. |
+| J4-b | **Rate-differential filter** for USDJPY: only trade in the direction the US-Japan interest-rate gap favours. | Needs historical interest-rate data (not yet sourced). | No. |
+
+---
+
 ## Recurring themes across entries
 
 | Theme | Sources | Status |
 |---|---|---|
 | Higher-timeframe trend agreement (daily/weekly must agree before trading) | Entry 1 (claims 1, 3), Entry 2 (claims 1, 4), Entry 3 (claim 10) | Untested. Strongest recurring idea (3 of 3 sources): J1-a / J2-a. |
-| Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3) | Partly supported by our data (swing > day trades). |
+| Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3), Entry 4 (1, 5) | Partly supported by our data (swing > day trades) and by academic trend-following research (1-12 month horizons). |
 | Higher-timeframe support/resistance levels matter | Entry 1 (claims 3, 5), Entry 2 (example), Entry 3 (claims 3, 4) | Untested: J1-b, J3-c, J3-e. |
 | News/scheduled events can override charts | Entry 1 (claim 10) | Untested: J1-d (needs an economic calendar). |
 | Wait for an entry trigger ("buying pressure") rather than entering on location alone | Entry 2 (KST cross), Entry 3 (claims 8, 12) | Untested: J3-a. |
