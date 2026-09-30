@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOperator() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/access/operator)
+        && request.auth.uid == get(/databases/$(database)/documents/access/operator).data.uid;
+    }
+    match /modes/{mode}/{document=**} {
+      allow read: if isOperator() && mode in ['PAPER', 'DEMO'];
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

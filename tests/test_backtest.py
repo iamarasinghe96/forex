@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -32,17 +34,57 @@ from forex.backtest import (
     replay_evaluations,
     run_backtest,
     run_walk_forward,
+    simulate_candidates,
     simulate_trade,
     simulate_trade_attempt,
 )
 from forex.config import AnalysisConfig, BacktestConfig
 from forex.domain import Candle, Timeframe
+from forex.persistence import CandleStore
 from forex.risk import RiskPolicy
 
 START = datetime(2020, 1, 1, tzinfo=UTC)
 POLICY = RiskPolicy(30, Decimal("1.5"), 4, Decimal(".20"),
                     Decimal(".12"), Decimal(55), Decimal(70), Decimal(85),
                     Decimal(".02"), Decimal(".035"), Decimal(".05"))
+
+
+@pytest.mark.parametrize("formal", [False, True])
+def test_cli_baseline_preserves_holdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, formal: bool,
+) -> None:
+    from forex.cli import verify_backtest
+    from forex.config import load_config
+
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    config = load_config(Path("config.yaml"))
+    config.broker.symbols = ["EURUSD"]
+    config.database.path = tmp_path / "history.sqlite3"
+    config.backtest.report_directory = tmp_path / "reports"
+    config.backtest.final_holdout_days = 2
+    config.backtest.monte_carlo_iterations = 10
+    monkeypatch.setattr("forex.cli.load_config", lambda path: config)
+    monkeypatch.setattr("forex.cli.configure_logging", lambda config: None)
+    store = CandleStore(config.database.path)
+    h1 = [candle(i) for i in range(24 * 12)]
+    h4 = [candle(i, Timeframe.H4) for i in range(24 * 12 // 4)]
+    store.upsert(h1 + h4)
+    expected_code = 3 if formal else 0
+    assert verify_backtest(Path("unused"), formal=formal) == expected_code
+    report = config.backtest.report_directory / "strategy-baseline.json"
+    before = json.loads(report.read_text())
+    boundary = datetime.fromisoformat(
+        before["walk_forward_protocol"]["EURUSD"]["final_holdout_start_utc"]
+    )
+    assert datetime.fromisoformat(before["generated_at_utc"]) < boundary
+    assert before["assumptions"]["final_holdout_evaluated"] is False
+    assert before["assumptions"]["walk_forward_executed"] is False
+    store.upsert([
+        replace(item, open=Decimal(2), high=Decimal(3), low=Decimal(1), close=Decimal(2))
+        for item in h1 + h4 if item.timestamp_utc >= boundary
+    ])
+    assert verify_backtest(Path("unused"), formal=formal) == expected_code
+    assert json.loads(report.read_text()) == before
 
 
 def candle(index: int, timeframe: Timeframe = Timeframe.H1, *, open_: float = 1.1,
@@ -74,6 +116,36 @@ def candidate(side: Side = Side.LONG, evaluation: datetime = START) -> TradeCand
         "unvalidated-v1", regime, .8, MappingProxyType({"score": .8}), .4,
         MappingProxyType({}), (), (), .2, levels, features, macro, ("LONDON",),
     )
+
+
+def test_prepared_replay_matches_reference_metrics_and_outcomes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h1 = series(1000, Timeframe.H1)
+    h4 = series(260, Timeframe.H4, offset_hours=2)
+    arguments = ("EURUSD", h1, h4, AnalysisConfig(), BacktestConfig(), POLICY)
+    cutoff = START + timedelta(hours=950)
+    prepared = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    monkeypatch.setattr("forex.backtest.prepare_candles", lambda candles, config: candles)
+    reference = run_backtest(*arguments, evaluation_end_utc=cutoff, outcome_end_utc=cutoff)
+    assert prepared == reference
+
+
+@pytest.mark.parametrize("boundary_hours", [None, 1, 4, 10])
+def test_bounded_simulation_inputs_match_full_history(
+    monkeypatch: pytest.MonkeyPatch, boundary_hours: int | None,
+) -> None:
+    monkeypatch.setattr("forex.backtest.analyse_market", fake_analysis)
+    h1 = [candle(i, open_=1, high=1.05, low=.95, close=1) for i in range(8)]
+    research = BacktestConfig(simulation_horizon_bars=3, breakeven_at_r=None)
+    evaluations = replay_evaluations("EURUSD", h1, [candle(0, Timeframe.H4)],
+                                     AnalysisConfig(), research)
+    boundary = START + timedelta(hours=boundary_hours) if boundary_hours is not None else None
+    expected = tuple(simulate_trade_attempt(item.candidate, h1, research,
+                                            outcome_end_utc=boundary)
+                     for item in evaluations if item.candidate is not None)
+    assert simulate_candidates(evaluations, list(reversed(h1)), research,
+                               outcome_end_utc=boundary) == expected
 
 
 def test_replay_is_sequential_excludes_forming_bars_and_uses_real_h4_alignment() -> None:
@@ -134,6 +206,17 @@ def test_breakeven_and_atr_trailing_changes_apply_on_following_bar() -> None:
     assert trade is not None
     assert trade.exit_price == 1.06  # close 1.08 - 2 * captured ATR .01
     assert trade.exit_reason == "STOP"
+
+
+def test_atr_trailing_cannot_activate_before_breakeven() -> None:
+    bars = [candle(1, open_=1, high=1.05, low=.95, close=1.04),
+            candle(2, open_=1.04, high=1.05, low=1.01, close=1.03)]
+    trade = simulate_trade(candidate(evaluation=START + timedelta(hours=1)), bars,
+                           BacktestConfig(simulation_horizon_bars=2, reward_risk=2,
+                                          breakeven_at_r=1, atr_trailing_multiple=2))
+    assert trade is not None
+    assert trade.exit_reason != "STOP"
+    assert trade.exit_price == 1.03
 
 
 def test_spread_cost_is_known_but_unvalidated_and_unknowns_remain_explicit() -> None:

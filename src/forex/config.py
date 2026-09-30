@@ -32,6 +32,7 @@ class BrokerConfig(BaseModel):
     terminal_path: str | None = None
     account_currency: str = Field(pattern=r"^[A-Z]{3}$")
     symbols: list[str] = Field(min_length=1)
+    symbol_overrides: dict[str, str] = Field(default_factory=dict)
     magic_number: int = Field(gt=0)
     connect_timeout_seconds: int = Field(gt=0, le=300)
 
@@ -151,6 +152,78 @@ class RiskConfig(BaseModel):
         return self
 
 
+class ContextProviderConfig(BaseModel):
+    name: Literal["groq", "gemini", "openrouter"]
+    model: str = ""  # Operator selects an available JSON-capable model; no guessed model ID.
+
+
+class ContextConfig(BaseModel):
+    enabled: bool = False
+    providers: list[ContextProviderConfig] = Field(default_factory=list)
+    timeout_seconds: float = Field(default=15, gt=0, le=120)
+    attempts_per_provider: int = Field(default=2, ge=1, le=5)
+    retry_backoff_seconds: float = Field(default=1, ge=0, le=30)
+    max_output_tokens: int = Field(default=1500, ge=100, le=10000)
+    prompt_file: Path = Path("src/forex/prompts/context-review-v1.md")
+
+    @model_validator(mode="after")
+    def configured_when_enabled(self) -> ContextConfig:
+        if self.enabled and (not self.providers or any(not p.model.strip() for p in self.providers)):
+            raise ValueError("enabled context requires provider model IDs; configure them first")
+        if len({p.name for p in self.providers}) != len(self.providers):
+            raise ValueError("context provider names must be unique")
+        return self
+
+
+class ExecutionConfig(BaseModel):
+    demo_enabled: bool = False
+    maximum_quote_age_seconds: float = Field(default=30, gt=0)
+    maximum_decision_age_seconds: float = Field(default=300, gt=0)
+    session_rollover_hour_utc: int | None = Field(default=None, ge=0, le=23)
+    session_rollover: Literal["new_york_close"] | None = None
+
+    @model_validator(mode="after")
+    def one_session_boundary(self) -> ExecutionConfig:
+        if self.session_rollover is not None and self.session_rollover_hour_utc is not None:
+            raise ValueError("Choose New York close or a fixed UTC rollover, not both")
+        return self
+
+    @property
+    def rollover_configured(self) -> bool:
+        return self.session_rollover is not None or self.session_rollover_hour_utc is not None
+
+
+class CloudConfig(BaseModel):
+    enabled: bool = False
+    emergency_halt_enabled: bool = False
+    project_id: str = ""
+    poll_seconds: float = Field(default=10, gt=0)
+    batch_size: int = Field(default=50, ge=1, le=500)
+    retry_base_seconds: float = Field(default=5, gt=0)
+    retry_maximum_seconds: float = Field(default=300, gt=0)
+
+    @model_validator(mode="after")
+    def valid_cloud(self) -> CloudConfig:
+        if self.enabled and not self.project_id.strip():
+            raise ValueError("enabled cloud mirror requires a Firebase project ID")
+        if self.emergency_halt_enabled and not self.enabled:
+            raise ValueError("remote paper halt requires explicitly enabled cloud connection")
+        if self.retry_base_seconds > self.retry_maximum_seconds:
+            raise ValueError("cloud retry base cannot exceed maximum")
+        return self
+
+
+class PaperConfig(BaseModel):
+    enabled: bool = False
+    database: Path = Path("data/paper.sqlite3")
+    starting_balance_aud: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    poll_seconds: float = Field(default=5, gt=0)
+    history_days: int = Field(default=365, ge=60)
+    heartbeat_file: Path = Path("data/paper-heartbeat.json")
+    halt_file: Path = Path("data/HALT_PAPER")
+    no_trade_hours: float = Field(default=168, gt=0)
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -162,6 +235,10 @@ class AppConfig(BaseModel):
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     telegram: TelegramConfig
     risk: RiskConfig
+    context: ContextConfig = Field(default_factory=lambda: ContextConfig())
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    cloud: CloudConfig = Field(default_factory=CloudConfig)
+    paper: PaperConfig = Field(default_factory=PaperConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -220,7 +221,7 @@ def import_csv(
     )
 
     CandleStore(database)  # create canonical schema before the single import transaction
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.row_factory = sqlite3.Row
         _schema(connection)
         connection.commit()
@@ -278,7 +279,7 @@ def validate_research_database(
 ) -> tuple[ResearchDataset, list[VerificationReport]]:
     """Establish provenance/storage invariants and return a deterministic identity."""
     store = CandleStore(database)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.row_factory = sqlite3.Row
         table = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='history_imports'"

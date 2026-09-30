@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {performance,matches,financialYear,evidenceCSV,stale,numeric} from '../src/model.js';
+const event=(pnl,date='2026-01-01T00:00:00+00:00')=>({kind:'trade_closed',observed_at_utc:date,payload:{pnl_aud:pnl,symbol:'EURUSD',trade_style:'day',timeframe:'H1'}});
+test('missing records do not invent performance',()=>{assert.equal(performance([]).pnl,null);assert.equal(performance([event('2')]).profitFactor,null);assert.equal(numeric(''),null);});
+test('performance uses signed outcomes and observed equity',()=>{const p=performance([event('100'),event('-50'),event('0'),event('-25'),{kind:'balance',observed_at_utc:'2026-01-01',payload:{equity:'1000'}},{kind:'balance',observed_at_utc:'2026-01-02',payload:{equity:'800'}}]);assert.equal(p.pnl,25);assert.equal(p.winRate,25);assert.equal(p.profitFactor,100/75);assert.equal(p.drawdown,20);assert.equal(p.streak,-1);});
+test('all filter dimensions apply together',()=>{const e=event('1');assert.equal(matches(e,{pair:'eurusd',timeframe:'h1',style:'day',from:'2026-01-01',through:'2026-01-01'}),true);assert.equal(matches(e,{style:'swing'}),false);assert.equal(matches(e,{from:'2026-01-02'}),false);});
+test('Australian financial year rolls over at Sydney midnight',()=>{assert.equal(financialYear('2026-06-30T13:59:00Z'),'2025–2026');assert.equal(financialYear('2026-06-30T14:00:00Z'),'2026–2027');});
+test('CSV includes payload and neutralizes spreadsheet formulas',()=>{const csv=evidenceCSV([{...event('1'),entity_id:'=HYPERLINK("bad")'}]);assert.ok(csv.includes("'=HYPERLINK"));assert.ok(csv.includes('pnl_aud'));});
+test('unknown future and old heartbeat are not healthy',()=>{const now=Date.parse('2026-01-01T00:00:00Z');assert.equal(stale(null,now),true);assert.equal(stale('2025-12-31T23:57:00Z',now),true);assert.equal(stale('2026-01-01T00:00:01Z',now),true);assert.equal(stale('2025-12-31T23:59:00Z',now),false);});

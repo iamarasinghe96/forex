@@ -111,6 +111,12 @@ and reporting work. Do not interpret this shorter engine verification as strateg
 
 ## Outputs and interpretation
 
+The CLI excludes the configured final holdout from baseline decisions and outcomes. Its
+`walk_forward_protocol` describes planned windows; `assumptions.walk_forward_executed` is false.
+Do not report these baseline metrics as walk-forward/OOS results. A zero validation-command exit
+code is a history-depth/engine result only. Fixed UTC external H4 alignment, missing execution
+costs, and unresolved history gaps still require separate assessment before formal validation.
+
 `reports/backtest/strategy-baseline.json` contains coverage gates, strategy/parameter versions,
 raw candidate, setup-episode, and completed independent-simulation counts, gross and known-cost
 metrics, breakdowns, rejection counts, Monte
@@ -180,3 +186,41 @@ Import is atomic across H1, H4 and provenance. Re-importing the same bytes and m
 retains the first import timestamp; metadata conflicts fail. `verify-history` refuses missing or mixed
 provenance, and research replay produces a fingerprinted report rather than replacing
 `strategy-baseline.json`.
+
+## Layer 6 local verification
+
+Run `.\.venv\Scripts\forex.exe verify-context`. Expected local status is
+LOCAL_CONFIGURATION_AND_SCHEMA_VERIFIED with external_provider_verification NOT_RUN.
+Configure model IDs and local FOREX_GROQ_API_KEY, FOREX_GEMINI_API_KEY,
+FOREX_OPENROUTER_API_KEY only when ready. Never paste the keys into chat. An all-provider
+failure is deterministic-only degradation; it cannot unblock a Layer 5 rejection. The future
+runtime must recheck live risk/state after a potentially slow review before any execution.
+
+## Layer 7 recovery
+
+Run `.\.venv\Scripts\forex.exe verify-execution` for an offline check. Success does not verify
+MT5. UNKNOWN/IN_FLIGHT means an order may already exist: reconnect, query positions/orders/deals,
+and reconcile. Never delete its record or resend it because the response was lost. Broker comments
+may be truncated/changed; if identity cannot be established, keep the submission blocked for review.
+Check Algo Trading for 10027; close-only 10044 is a broker restriction, not a Python error.
+The demo adapter is intentionally not wired to an automatic order CLI. Real-money transport is
+refused. Do not enable unattended broker execution before the full paper soak and manual checks.
+
+## Layer 8 sync recovery
+
+Run `.\.venv\Scripts\forex.exe verify-journal`. Cloud is deliberately disabled by default.
+An outage leaves journal events/outbox rows in SQLite. Restart the sync worker; do not delete
+records or rebuild trade state from Firestore. A failed cloud write may already have succeeded:
+retry uses the same document ID. Reconcile remote hashes in bounded pages and requeue divergence.
+Back up SQLite with its backup API rather than copying a live WAL database file.
+
+Before enabling cloud: configure a Firebase project, create the operator Auth UID, deploy/review
+rules and indexes, create `access/operator` with that UID using Admin privileges, and run allowed-
+UID/other-UID/anonymous/write-denial emulator tests. Keep the service-account file on the VPS.
+
+## Integrated research and cloud checks
+Use forex walk-forward-research --research-database data/dukascopy-research.sqlite3 for actual fixed-baseline fold runs; output reports remain local/ignored. Final holdout is not evaluated. This command does not establish realistic costs, broker H4 equivalence or strategy validity.
+Use forex reconcile-journal after configured cloud outages to compare event fingerprints and all/day aggregates, requeue divergence and deliver one configured batch. Repeat sync-journal until drained. Only one local sync batch may write at a time. In paper mode these commands use the separate paper database.
+Local emulator security tests passed; actual deployed Auth/IAM/rules and emergency admin-console halt delivery require external verification.
+
+The Python mirror can be verified against the local demo emulator with scripts/verify_firestore_mirror.py. It refuses non-local emulator settings and uses anonymous demo credentials. Verified delivery, aggregate repair and the PAPER halt latch locally; never point this verification at a real project.

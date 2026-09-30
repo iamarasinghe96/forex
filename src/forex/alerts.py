@@ -18,8 +18,8 @@ class TelegramAlerter:
         try:
             response = httpx.post(self.url, json={"chat_id": self.chat_id, "text": f"[{self.mode}] {message}"}, timeout=self.timeout)
             response.raise_for_status()
-        except httpx.HTTPError as exc:
+        except httpx.HTTPError:
             raise OperatorError(
-                f"Telegram alert delivery failed: {exc}. Check the bot token, chat ID, and VPS "
+                "Telegram alert delivery failed. Check the bot token, chat ID, and VPS "
                 "internet connection. Trading must not rely on this alert having arrived."
-            ) from exc
+            ) from None

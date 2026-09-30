@@ -12,6 +12,10 @@ from forex.domain import AccountState, Candle, SymbolSpec, Tick, Timeframe
 
 
 class Broker(ABC):
+    def market_allows_entries(self, broker_symbol: str) -> bool:
+        """Unknown market permission is not permission to enter, including in paper mode."""
+        return False
+
     @abstractmethod
     def connect(self) -> AccountState: ...
 

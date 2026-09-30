@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from forex.domain import Candle, Timeframe
-from forex.risk import DailyRiskState
+from forex.risk import DailyRiskState, RiskPolicy, evaluate_daily_risk
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at_utc TEXT NOT NULL);
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS risk_sessions (
 def initialise_database(path: Path) -> None:
     """Create the local database atomically and enable crash-resistant WAL journaling."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
         connection.executescript(SCHEMA)
@@ -58,7 +59,7 @@ class CandleStore:
              str(c.low), str(c.close), c.tick_volume, c.spread, c.real_volume)
             for c in candles
         ]
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.executemany(
                 """INSERT INTO candles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(symbol, timeframe,timestamp_utc) DO UPDATE SET
@@ -68,7 +69,7 @@ class CandleStore:
             )
 
     def load(self, symbol: str, timeframe: Timeframe) -> list[Candle]:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             rows = connection.execute(
                 """SELECT timestamp_utc, open, high, low, close, tick_volume, spread, real_volume
                 FROM candles WHERE symbol=? AND timeframe=? ORDER BY timestamp_utc ASC""",
@@ -88,13 +89,40 @@ class RiskSessionStore:
         self.path = path
         initialise_database(path)
 
+    def observe_equity(self, session_id: str, opening_balance: Decimal, equity: Decimal,
+                       policy: RiskPolicy, now: datetime) -> DailyRiskState:
+        """Observe equity and latch losses without clearing a concurrently set kill switch."""
+        if now.tzinfo is None or now.utcoffset() != UTC.utcoffset(now):
+            raise ValueError("risk observation requires UTC")
+        with closing(sqlite3.connect(self.path)) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT opening_balance,circuit_breaker_triggered,"
+                                     "kill_switch_active FROM risk_sessions WHERE session_id=?",
+                                     (session_id,)).fetchone()
+            state = DailyRiskState(session_id, Decimal(row[0]) if row else opening_balance,
+                                   equity, bool(row[1]) if row else False,
+                                   bool(row[2]) if row else False)
+            result = evaluate_daily_risk(state, policy)
+            connection.execute("""INSERT INTO risk_sessions VALUES (?,?,?,?,?,?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                circuit_breaker_triggered=MAX(risk_sessions.circuit_breaker_triggered,
+                                              excluded.circuit_breaker_triggered),
+                triggered_at_utc=COALESCE(risk_sessions.triggered_at_utc,excluded.triggered_at_utc),
+                updated_at_utc=excluded.updated_at_utc""", (
+                session_id, str(state.opening_balance), result.circuit_breaker_active,
+                now.isoformat() if result.circuit_breaker_active else None,
+                state.kill_switch_active, now.isoformat(),
+            ))
+        return DailyRiskState(session_id, state.opening_balance, equity,
+                              result.circuit_breaker_active, state.kill_switch_active)
+
     def save(self, state: DailyRiskState, updated_at_utc: datetime,
              triggered_at_utc: datetime | None = None) -> None:
         for value, name in ((updated_at_utc, "updated_at_utc"),
                             (triggered_at_utc, "triggered_at_utc")):
             if value is not None and (value.tzinfo is None or value.utcoffset() != UTC.utcoffset(value)):
                 raise ValueError(f"{name} must be timezone-aware UTC")
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """INSERT INTO risk_sessions VALUES (?, ?, ?, ?, ?, ?)
@@ -112,7 +140,7 @@ class RiskSessionStore:
             )
 
     def load(self, session_id: str, current_equity: Decimal) -> DailyRiskState | None:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             row = connection.execute(
                 """SELECT opening_balance, circuit_breaker_triggered, kill_switch_active
                 FROM risk_sessions WHERE session_id=?""", (session_id,)).fetchone()

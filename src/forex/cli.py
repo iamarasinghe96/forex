@@ -192,16 +192,21 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
             )
         gate = history_gate(h1, h4, config.backtest.minimum_history_years)
         gates[symbol] = gate
-        result = run_backtest(symbol, h1, h4, config.analysis, config.backtest, policy)
-        metrics[symbol] = result.metrics
-        simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
-                                           config.backtest.monte_carlo_seed)
-                               if result.trades else None)
         if gate.earliest_utc is None or gate.latest_utc is None:
             raise OperatorError(f"Unable to determine stored history coverage for {symbol}.")
         protocols[symbol] = build_walk_forward_folds(
             gate.earliest_utc, gate.latest_utc, config.backtest
         )
+        research_end = protocols[symbol].final_holdout_start_utc
+        log.info("%s replay starting; reserved holdout starts at %s", symbol, research_end)
+        result = run_backtest(
+            symbol, h1, h4, config.analysis, config.backtest, policy,
+            evaluation_end_utc=research_end, outcome_end_utc=research_end,
+        )
+        metrics[symbol] = result.metrics
+        simulations[symbol] = (monte_carlo(result.trades, config.backtest.monte_carlo_iterations,
+                                           config.backtest.monte_carlo_seed)
+                               if result.trades else None)
         latest_closed.append(result.evaluations[-1].snapshot.evaluation_time_utc
                              if result.evaluations else h1[-1].timestamp_utc)
         log.info(
@@ -225,8 +230,12 @@ def verify_backtest(config_path: Path, *, formal: bool = False, database: Path |
         "Commission, slippage, swap and other broker fees are unavailable; net-known-cost results are incomplete.",
         "Candle spread points require captured instrument point metadata and are not tick execution spreads.",
         "All Layer 3 and Layer 4 parameters remain UNVALIDATED; no parameter was promoted.",
+        "Walk-forward windows are a protocol only; this command does not run fold selection or OOS validation.",
     )
     assumptions = {
+        "final_holdout_evaluated": False,
+        "walk_forward_executed": False,
+        "baseline_scope": "pre-holdout research only; decisions and outcomes stop at the boundary",
         "entry": "next available H1 open",
         "ambiguity_policy": config.backtest.ambiguity_policy,
         "reward_risk": config.backtest.reward_risk,
@@ -324,17 +333,220 @@ def verify_risk(config_path: Path) -> int:
             broker.disconnect()
 
 
+def verify_context(config_path: Path) -> int:
+    """Verify local review configuration/schema without calling paid providers."""
+    from forex.context import ReviewResponse
+
+    config = load_config(config_path)
+    prompt = config.context.prompt_file.read_text(encoding="utf-8")
+    if not prompt.strip():
+        raise OperatorError("Context prompt is empty. Restore the versioned prompt file.")
+    ReviewResponse.model_validate_json(
+        '{"verdict":"approve","volume_fraction":"1","rationale":"Offline schema check"}'
+    )
+    print(json.dumps({"layer": 6, "mode": config.mode.upper(),
+                      "context_enabled": config.context.enabled,
+                      "providers": [p.model_dump() for p in config.context.providers],
+                      "external_provider_verification": "NOT_RUN",
+                      "status": "LOCAL_CONFIGURATION_AND_SCHEMA_VERIFIED"}, indent=2))
+    return 0
+
+
+def verify_execution(config_path: Path) -> int:
+    """Exercise durable reservation in a disposable fixture, without a broker connection."""
+    from tempfile import TemporaryDirectory
+
+    from forex.analysis import Side
+    from forex.execution import ExecutionStore, OrderIntent
+
+    config = load_config(config_path)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with TemporaryDirectory(prefix="forex-execution-check-") as directory:
+        store = ExecutionStore(Path(directory) / "fixture.sqlite3")
+        intent = OrderIntent("fx-offline-fixture", "fixture", "fixture", 1, "FIXTURE", Side.LONG,
+                             Decimal(".01"), Decimal(1), Decimal(".9"), Decimal("1.2"), 1, now)
+        if not store.reserve(intent) or store.reserve(intent):
+            raise OperatorError("Execution reservation self-check failed. Do not enable execution.")
+        store.update(intent.client_id, "UNKNOWN", None, "fixture ambiguous submission", now)
+        reopened = ExecutionStore(store.path)
+        if reopened.unresolved() != (intent.client_id,):
+            raise OperatorError("Execution restart self-check failed. Do not enable execution.")
+    print(json.dumps({"layer": 7, "mode": config.mode.upper(),
+                      "status": "OFFLINE_RESERVATION_AND_RESTART_VERIFIED",
+                      "broker_execution": "NOT_RUN", "real_money_execution": "DISABLED"}))
+    return 0
+
+
+def verify_journal(config_path: Path) -> int:
+    """Check atomic local audit persistence in a disposable offline database."""
+    from tempfile import TemporaryDirectory
+
+    from forex.journal import JournalStore
+
+    config = load_config(config_path)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with TemporaryDirectory(prefix="forex-journal-check-") as directory:
+        journal = JournalStore(Path(directory) / "fixture.sqlite3")
+        event = journal.append("PAPER", "no_trade", "offline-fixture", {"reason": "fixture"}, now)
+        if journal.append("PAPER", "no_trade", "offline-fixture", event.payload, now) != event:
+            raise OperatorError("Journal idempotency failed. Stop and preserve the database for review.")
+        if len(journal.pending(now, 10)) != 1 or journal.summary("PAPER")["event_count"] != 1:
+            raise OperatorError("Journal/outbox verification failed. Do not enable the runtime.")
+    print(json.dumps({"layer": 8, "mode": config.mode.upper(),
+                      "status": "LOCAL_JOURNAL_AND_OUTBOX_VERIFIED",
+                      "cloud_enabled": config.cloud.enabled, "firestore_verification": "NOT_RUN"}))
+    return 0
+
+
+def sync_journal(config_path: Path, *, reconcile: bool = False) -> int:
+    """Deliver one configured cloud batch; disabled configuration performs no network I/O."""
+    from forex.cloud_sync import configured_worker
+    from forex.journal import JournalStore
+
+    config = load_config(config_path)
+    path = config.paper.database if config.mode == "paper" else config.database.path
+    worker = configured_worker(config.cloud, JournalStore(path), config.paper.halt_file)
+    if worker is None:
+        print("Cloud mirror disabled. Local records retained; no cloud request was made.")
+        return 0
+    if reconcile:
+        cursor = repaired = 0
+        while True:
+            count, after = worker.reconcile_page(datetime.now(UTC), cursor)
+            repaired += count
+            if after == cursor:
+                break
+            cursor = after
+        print(json.dumps({"requeued_for_repair": repaired, "last_sequence": cursor}))
+    result = worker.sync_once(datetime.now(UTC), config.cloud.batch_size)
+    print(json.dumps(asdict(result)))
+    return 2 if result.failed else 0
+
+
+def verify_paper(config_path: Path) -> int:
+    from tempfile import TemporaryDirectory
+
+    from forex.journal import JournalStore
+    from forex.operations import SingleWriter, backup_database
+    from forex.runtime import RuntimeStore
+
+    config = load_config(config_path)
+    now = datetime.now(UTC)
+    with TemporaryDirectory(prefix="forex-paper-check-") as directory:
+        path = Path(directory) / "fixture.sqlite3"
+        journal = JournalStore(path)
+        journal.append("PAPER", "no_trade", "fixture", {"reason": "offline verification"}, now)
+        store = RuntimeStore(path)
+        if not store.claim("fixture", now) or RuntimeStore(path).claim("fixture", now):
+            raise OperatorError("Paper restart identity check failed. Keep runtime disabled.")
+        with SingleWriter(Path(directory) / "fixture.lock"):
+            backup_database(path, Path(directory) / "backup.sqlite3")
+    print(json.dumps({"layer": 10, "paper_enabled": config.paper.enabled,
+                      "status": "OFFLINE_STATE_AND_BACKUP_VERIFIED", "elapsed_soak": "NOT_RUN",
+                      "mt5": "NOT_CALLED"}))
+    return 0
+
+
+def verify_intelligence(config_path: Path) -> int:
+    from tempfile import TemporaryDirectory
+
+    from forex.intelligence import ExperimentRegistry
+
+    load_config(config_path)
+    with TemporaryDirectory(prefix="forex-intelligence-check-") as directory:
+        registry = ExperimentRegistry(Path(directory) / "fixture.sqlite3")
+        try:
+            registry.evaluate("unknown", datetime.now(UTC))
+        except ValueError:
+            pass
+        else:
+            raise OperatorError("Unknown research version was accepted. Keep promotion disabled.")
+    print(json.dumps({"layer": 11, "status": "UNKNOWN_VERSION_FAILS_CLOSED",
+                      "production_mutation": False, "promotion": "NO_CANDIDATE_VALIDATED"}))
+    return 0
+
+
+def walk_forward_research(config_path: Path, database: Path) -> int:
+    from forex.backtest import parameter_experiment, run_walk_forward
+
+    config = load_config(config_path)
+    configure_logging(config)
+    dataset, _ = validate_research_database(database, config.broker.symbols, config.market_data)
+    store = CandleStore(database)
+    experiment = parameter_experiment(config.analysis, {})
+    for symbol in config.broker.symbols:
+        logging.getLogger("forex.research").info("%s fixed-parameter walk-forward starting", symbol)
+        result = run_walk_forward(symbol, store.load(symbol, Timeframe.H1), store.load(symbol, Timeframe.H4),
+                                  [experiment], config.backtest, policy_from_config(config.risk))
+        path = config.backtest.report_directory / f"walk-forward-{symbol}-{dataset.fingerprint}.json"
+        write_json_report(path, {"symbol": symbol, "dataset": dataset,
+                                "experiment": {"experiment_id": experiment.experiment_id,
+                                               "parameter_version": experiment.parameter_version,
+                                               "overrides": experiment.overrides,
+                                               "analysis": experiment.analysis.model_dump()},
+                                "validation": result, "strategy_validated": False,
+                                "costs_complete": False, "broker_h4_alignment_verified": False,
+                                "scope": "Fixed baseline only; no parameter optimization. Final holdout untouched. Candidate-level outcomes are not a portfolio simulation."})
+        logging.getLogger("forex.research").info("%s completed %s folds; report %s", symbol, len(result.fold_results), path)
+    return 0
+
+
+def run_paper(config_path: Path) -> int:
+    from threading import Event
+
+    from forex.context import ContextReviewer, ContextSecrets, ContextStore, HTTPContextProvider
+    from forex.paper import PaperBroker
+    from forex.runtime import PaperRuntime
+
+    config = load_config(config_path)
+    if (not config.paper.enabled or config.mode != "paper" or
+            config.paper.starting_balance_aud is None or
+            not config.execution.rollover_configured):
+        raise OperatorError("Paper runtime is disabled or incomplete. Configure starting balance and daily rollover, then explicitly enable paper mode. No broker order was sent.")
+    if config.paper.database.resolve() == config.database.path.resolve():
+        raise OperatorError("Use a separate paper database so simulated risk latches cannot affect broker execution.")
+    configure_logging(config)
+    from forex.operations import SingleWriter
+
+    with SingleWriter(config.paper.database.with_suffix(".lock")):
+        feed = MT5Broker(config.broker, Secrets().mt5_password)
+        try:
+            account = feed.connect()
+            feed.validate_server_clock(datetime.now(UTC), config.market_data.server_clock_tolerance_seconds)
+            paper = PaperBroker(config.paper.database, feed, account,
+                                Decimal(str(config.paper.starting_balance_aud)),
+                                config.execution.maximum_quote_age_seconds,
+                                Decimal(str(config.risk.tax_reserve_percent)))
+            reviewer = ContextReviewer(config.context, HTTPContextProvider(config.context, ContextSecrets()),
+                                       ContextStore(config.paper.database))
+            runtime = PaperRuntime(config, feed, paper, reviewer)
+            runtime.run(Event())
+        except KeyboardInterrupt:
+            logging.getLogger("forex.paper").info("Paper loop stopped by operator; positions retained for restart.")
+        finally:
+            feed.disconnect()
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Safely verify the read-only Forex system")
     parser.add_argument(
         "command", choices=["verify-foundation", "verify-market-data", "verify-analysis",
                             "verify-backtest", "validate-backtest", "verify-risk",
-                            "import-history", "verify-history"]
+                            "import-history", "verify-history", "verify-context", "verify-execution",
+                            "verify-journal", "sync-journal", "run-paper", "verify-paper",
+                            "verify-intelligence", "diagnose", "experiment-propose",
+                            "experiment-attach", "experiment-status", "walk-forward-research",
+                            "reconcile-journal", "paper-soak-report"]
     )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--research-database", type=Path)
     parser.add_argument("--file", type=Path)
     parser.add_argument("--dataset")
+    parser.add_argument("--version")
+    parser.add_argument("--registry", type=Path, default=Path("data/experiments.sqlite3"))
+    parser.add_argument("--start-utc", default="2000-01-01T00:00:00+00:00")
+    parser.add_argument("--end-utc")
     parser.add_argument("--provider")
     parser.add_argument("--symbol")
     parser.add_argument("--price-type", choices=["bid", "ask", "midpoint", "ohlc"])
@@ -343,6 +555,59 @@ def main() -> None:
     parser.add_argument("--h4-alignment-hour-utc", type=int, default=0)
     args = parser.parse_args()
     try:
+        if args.command == "paper-soak-report":
+            from forex.journal import JournalStore
+            from forex.serialization import canonical_json
+            from forex.soak import summarize_soak
+
+            config = load_config(args.config)
+            try:
+                soak_report = summarize_soak(JournalStore(config.paper.database),
+                                        datetime.fromisoformat(args.start_utc),
+                                        datetime.fromisoformat(args.end_utc) if args.end_utc else datetime.now(UTC))
+                print(canonical_json(soak_report))
+            except ValueError:
+                raise OperatorError("Soak report requires an increasing timezone-aware UTC window.") from None
+            raise SystemExit(0)
+        if args.command == "reconcile-journal":
+            raise SystemExit(sync_journal(args.config, reconcile=True))
+        if args.command == "walk-forward-research":
+            if args.research_database is None:
+                parser.error("walk-forward-research requires --research-database")
+            raise SystemExit(walk_forward_research(args.config, args.research_database))
+        if args.command in {"diagnose", "experiment-propose", "experiment-attach", "experiment-status"}:
+            from forex.intelligence import AcceptanceCriteria, ExperimentRegistry, diagnose
+            from forex.journal import JournalStore
+            from forex.serialization import canonical_json
+
+            config = load_config(args.config)
+            now = datetime.now(UTC)
+            try:
+                registry = ExperimentRegistry(args.registry)
+                if args.command in {"diagnose", "experiment-propose"}:
+                    diagnosis_report = diagnose(JournalStore(config.paper.database), "PAPER",
+                                      datetime.fromisoformat(args.start_utc),
+                                      datetime.fromisoformat(args.end_utc) if args.end_utc else now)
+                    if args.command == "diagnose":
+                        print(canonical_json(diagnosis_report))
+                    else:
+                        if args.file is None:
+                            parser.error("experiment-propose requires --file with hypothesis, parameters and criteria")
+                        proposal = json.loads(args.file.read_text(encoding="utf-8"))
+                        version = registry.propose(diagnosis_report, proposal["hypothesis"], proposal["parameters"],
+                                                   AcceptanceCriteria.model_validate(proposal["criteria"]), now)
+                        print(canonical_json({"version_hash": version, "production_action": "NONE"}))
+                else:
+                    if not args.version:
+                        parser.error("experiment command requires --version")
+                    if args.command == "experiment-attach":
+                        if args.file is None:
+                            parser.error("experiment-attach requires --file")
+                        registry.attach(args.version, args.file, now)
+                    print(canonical_json(registry.evaluate(args.version, now)))
+            except (OSError, ValueError, KeyError) as exc:
+                raise OperatorError(f"Research evidence command failed ({type(exc).__name__}). Check the report schema, hashes and UTC window; no production configuration changed.") from None
+            raise SystemExit(0)
         if args.command == "import-history":
             if not all((args.research_database, args.file, args.dataset, args.provider,
                         args.symbol, args.price_type)):
@@ -369,6 +634,13 @@ def main() -> None:
             "verify-backtest": verify_backtest,
             "validate-backtest": full_validation,
             "verify-risk": verify_risk,
+            "verify-context": verify_context,
+            "verify-execution": verify_execution,
+            "verify-journal": verify_journal,
+            "sync-journal": sync_journal,
+            "run-paper": run_paper,
+            "verify-paper": verify_paper,
+            "verify-intelligence": verify_intelligence,
         }
         if args.command in {"verify-backtest", "validate-backtest"}:
             raise SystemExit(verify_backtest(args.config, formal=args.command == "validate-backtest",

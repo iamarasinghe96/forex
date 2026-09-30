@@ -1,4 +1,13 @@
-# Forex Operator — Layer 4 Historical Research
+# Forex Operator — Research and Paper Development Through Layer 11
+
+This development branch adds constrained context review, guarded demo execution transport,
+local-first journaling/cloud mirror, a read-only dashboard, durable paper runtime and
+evidence-gated performance intelligence. These are draft changes awaiting operator review;
+integrations and paper execution default disabled. Main has not been merged or deployed.
+No real orders, completed elapsed soak or formally validated trading edge is claimed.
+
+Start with `BUILD_PROGRESS.md`, `OPERATOR_SETUP.md`, `docs/PAPER_OPERATIONS.md` and
+`docs/INTELLIGENCE.md`. The original Layer 1–5 description below remains the baseline context.
 
 Layers 1–2 provide the verified read-only broker and market-data foundation. Layer 3 adds pure,
 deterministic analysis and candidate generation; it still contains no risk sizing or order execution
@@ -85,6 +94,17 @@ news feed, or fabricated macro data. `validate-backtest` runs the same replay bu
 unless every pair has at least five years in both H1 and H4. The expected current VPS depth of about
 0.74 years therefore produces **INSUFFICIENT HISTORY FOR FIVE-YEAR VALIDATION** while still allowing
 engine checks and metrics. This is not a failed engine check and never becomes a validation claim.
+
+Both commands reserve the configured final holdout before replay: decisions and forward outcomes
+stop at its boundary. The baseline contains pre-holdout research metrics and planned walk-forward
+windows only; these commands do not execute fold selection or measure aggregate OOS performance.
+An exit code of zero from `validate-backtest` establishes the history-depth gate and successful
+engine replay, not strategy approval. Generated research reports remain local and are ignored by Git.
+
+Historical replay prepares immutable, ordered candle prefixes and recursive EMA/MACD histories once.
+The same `analyse_market` entry point consumes only the prefix closed at each decision time. Recursive
+indicators retain the original full-history seed and arithmetic; finite-window features retain their
+original windows. The ordinary sequence path remains available as the reference implementation.
 
 At each event, evaluation time is the actual H1 timestamp plus one hour. Layer 3 independently filters
 H1 and H4 to candles whose actual timestamp plus duration is closed, so forming candles and future H4
@@ -195,3 +215,85 @@ makes formal validation eligible; it does not validate the strategy or relax any
 Research replay first verifies provenance and writes `research-baseline-<fingerprint>.json`, leaving
 the broker-native baseline untouched. The report binds results to the release/provider, symbols,
 source hashes, semantics, alignment, coverage, and deterministic dataset fingerprint.
+
+## Layer 6 constrained context review
+
+`forex verify-context` validates the local prompt/configuration/JSON contract without a paid
+provider call or MT5 connection. Context is disabled by default; set actual provider model IDs
+and local .env keys before enabling it. No provider/free-tier/cost assumptions are fabricated.
+
+The review accepts only approve/reject/reduce_size, a volume fraction, rationale and references
+to supplied evidence. It cannot modify prices, stops, objectives, policy or strategy parameters.
+Risk blocks bypass providers entirely. Reductions floor to the broker step and below-minimum
+size is non-actionable. Missing context preserves the original eligible Layer 5 allowance.
+
+Provider timeout/rate/error/malformed/schema failures retry with bounded backoff then fail over
+in configured order. All-failed results request an operator alert and remain deterministic-only.
+SQLite records every attempt, observed token counts/reported cost, and validated cached responses.
+Unknown billed amounts remain unavailable. Cache identity binds prompt content, provider/model
+order, market/evidence payload and risk decision. Prompts are versioned files and never promote
+parameters. External provider verification is deferred in OPERATOR_SETUP.md.
+
+Provider wire formats were checked against official documentation:
+- https://console.groq.com/docs/structured-outputs
+- https://ai.google.dev/gemini-api/docs/openai
+- https://openrouter.ai/docs/api/reference/overview
+
+The JSON request mode does not replace local schema validation. Current review/cache work is
+single-worker; concurrent paid-call deduplication is not claimed.
+
+## Layer 7 durable execution and reconciliation
+
+`forex verify-execution` checks reservation/restart behavior in a disposable offline fixture.
+It never connects to MT5. The execution service rechecks fresh quotes, broker portfolio and
+Layer 5 risk after Layer 6 review, and respects both reviewed volume and money-risk ceilings.
+A unique account/candidate identity is reserved transactionally before submission. Only one
+unresolved submission may be in flight; unknown results block subsequent entries. Startup
+reconciliation uses broker positions, orders and deals. Absent history is not proof of rejection
+and never permits an automatic resend. Partial fills are reconciled, not topped up automatically.
+
+The separate MT5ExecutionBroker is disabled by default and refuses all real-money accounts.
+Its base MT5Broker stays read-only. The guarded demo transport checks runtime account/symbol/
+volume/stop/freeze constraints, handles filling flags correctly, and retries filling mode only
+after a definitive unsupported-fill rejection. It never retries an ambiguous order response.
+Protective modifications cannot loosen stops; closing explicitly names a current bot ticket.
+Manual positions are included in portfolio risk but never silently modified/closed. An existing
+netting position on the symbol blocks a new entry pending explicit reconciliation.
+
+Demo/network/retcode behavior remains unverified outside mocks. Quote changes between risk
+calculation and submission are rejected; slippage tolerance is not guessed. The operator must
+choose the daily session boundary before an unattended runtime. Flattening manual positions
+requires a separate explicit scope decision; this transport manages bot positions only.
+
+MT5 protocol references (not market assumptions):
+- https://www.mql5.com/en/docs/python_metatrader5/mt5ordersend_py
+- https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants
+- https://www.mql5.com/en/docs/constants/errorswarnings/enum_trade_return_codes
+
+## Layer 8 journal, attribution and cloud mirror
+
+`forex verify-journal` checks the local journal/outbox using a disposable offline fixture.
+Every candidate, no-trade, analytical rejection, hard risk block, context verdict, execution and
+outcome can be retained with complete structured provenance. Caller-supplied stable identities
+must include run/version identity. Duplicate payloads are idempotent; conflicting facts under
+one identity are rejected. Local event, aggregate, reserve-ledger and outbox writes are atomic.
+Cloud failure is handled by a separate worker with persistent retry state. Repeated delivery
+uses deterministic document IDs; reconciliation requeues missing or mismatched cloud events.
+
+PAPER and DEMO records/aggregates are separate. The configurable profit reserve is an exact
+accounting estimate on positive realized P&L, not a tax determination. Negative outcomes accrue
+zero new reserve. CSV export retains the full audit payload and neutralizes spreadsheet-formula
+prefixes. No account/cost metric is silently inferred from normalized research R.
+
+Attribution produces multiple evidence-referenced observations. It separates hard risk blocks,
+analytical no-candidate states, ambiguous paths, recorded stop exits and observed regime changes.
+Observations are not causal proof, probabilities are not invented, and attribution cannot
+change risk/strategy or block trading. Later learning must test hypotheses separately.
+
+The optional Firestore Admin mirror writes immutable event IDs and precomputed all-time/daily
+aggregates in batches. It is not called on the decision path. Install Firebase Admin only when
+enabling this integration, configure project/credential path locally, and follow OPERATOR_SETUP.md.
+`firestore.rules` denies all browser writes and grants PAPER/DEMO reads only to the authenticated
+UID in the Admin-created `access/operator` document. Missing configuration denies access.
+The Admin SDK bypasses client rules; its credential stays on the VPS and needs IAM controls.
+Rules/emulator/cloud deployment remain unverified until their explicit checks run.

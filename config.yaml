@@ -8,6 +8,7 @@ broker:
   terminal_path: null          # null lets MetaTrader5 find the installed terminal.
   account_currency: AUD        # Startup fails if MT5 reports a different currency.
   symbols: [EURUSD, GBPUSD, USDJPY]
+  symbol_overrides: {EURUSD: EURUSD.a, GBPUSD: GBPUSD.a, USDJPY: USDJPY.a}
   magic_number: 26092801
   connect_timeout_seconds: 30
 
@@ -74,6 +75,20 @@ telegram:
   enabled: false
   timeout_seconds: 10
 
+# Layer 6: disabled until local keys and current JSON-capable model IDs are configured.
+# Timeouts/retries/token caps are UNVALIDATED operational limits, not strategy parameters.
+context:
+  enabled: false
+  providers:
+    - {name: groq, model: "openai/gpt-oss-120b"}
+    - {name: gemini, model: "gemini-3.1-flash-lite"}
+    - {name: openrouter, model: "google/gemma-4-31b-it:free"}  # Key valid; setup response rate-limited (429).
+  timeout_seconds: 15
+  attempts_per_provider: 2
+  retry_backoff_seconds: 1
+  max_output_tokens: 1500
+  prompt_file: src/forex/prompts/context-review-v1.md
+
 # Reserved risk profile; implemented in Layer 5, not used to place orders in Layer 1.
 risk:
   max_leverage: 30
@@ -86,3 +101,33 @@ risk:
   conviction_risk_percent: {low: 2.0, medium: 3.5, high: 5.0}
   conviction_thresholds: {minimum: 55, medium: 70, high: 85}  # UNVALIDATED operator policy.
   target_trades_per_week: {minimum: 3, maximum: 8}
+
+# Layer 7 operational defaults (UNVALIDATED). No command enables broker execution.
+execution:
+  demo_enabled: false
+  maximum_quote_age_seconds: 30
+  maximum_decision_age_seconds: 300
+  session_rollover_hour_utc: null  # Alternative fixed UTC boundary; exclusive with policy below.
+  session_rollover: new_york_close  # 17:00 America/New_York, with automatic US DST.
+
+# Layer 8 cloud mirror stays disabled until Firebase credentials/security setup is verified.
+# Retry/poll/batch limits are UNVALIDATED operational defaults.
+cloud:
+  enabled: false
+  emergency_halt_enabled: false
+  project_id: "forex-paper-bot"
+  poll_seconds: 10
+  batch_size: 50
+  retry_base_seconds: 5
+  retry_maximum_seconds: 300
+
+# Layer 10 stays disabled until explicit paper setup; never places MT5 orders.
+paper:
+  enabled: false
+  database: data/paper.sqlite3
+  starting_balance_aud: 100
+  poll_seconds: 5
+  history_days: 365
+  heartbeat_file: data/paper-heartbeat.json
+  halt_file: data/HALT_PAPER
+  no_trade_hours: 168
