@@ -454,3 +454,20 @@ BOTH independent periods: 2012-2018 (single window from 2012-04-01) and 2021-202
 test windows, final holdout excluded). No other multiple or horizon will be tried before this
 verdict is recorded. Tooling: research_trades.py --reward-risk/--atr-trailing/--horizon-bars;
 research_candidate.py --rule trend55. Verified on synthetic data (exits become STOP/trailing only).
+
+### Result of pre-registration 2 (trailing exit) and registration of the final-holdout check
+
+trend55 + trailing (no target, break-even 1R, 3 x H1 ATR trail, 480-bar max), net, one per pair:
+2012-2018: 418 trades, +0.013 R, PF 1.03 -> PASS. 2021-2025 (walk-forward test windows):
+297 trades, +0.079 R, PF 1.16 -> PASS. Compared with the fixed 1.5R target (+0.028 / +0.040)
+the trailing exit is not a clear improvement; combined about +0.04 R per trade, not
+statistically distinguishable from zero. Consistent across all four runs (two periods x two exit
+models): USDJPY positive (+0.063, +0.162, +0.313, +0.486 R), EURUSD and GBPUSD negative. Swap
+costs for multi-day holds are not modelled.
+
+Final-holdout registration (recorded before the holdout is examined; used once):
+window 2025-09-28T16:00Z to the end of the original dataset, same exit model and costs.
+Primary: trend55 + trailing, all three pairs; pass = net average R > 0 and net PF > 1; a failure
+means the exit model is not deployed. Secondary (informational only, cannot rescue a failed
+primary): the same rule on USDJPY alone. Expected sample about 60 trades, so a pass is weak
+evidence while a clear loss is informative.
