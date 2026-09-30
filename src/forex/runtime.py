@@ -231,6 +231,11 @@ class PaperRuntime:
             self.emit("balance", identity, {"balance": account.balance, "equity": account.equity}, now)
             self.emit("health", identity, payload, now)
             self.last_health_journal = (now, status)
+            # A visible sign of life in the console, once per journaled heartbeat (not every cycle).
+            logging.getLogger("forex.paper").info(
+                "%s | balance AUD %s | equity AUD %s | open trades %s", status.capitalize(),
+                account.balance.quantize(Decimal("0.01")), account.equity.quantize(Decimal("0.01")),
+                len(payload["positions"]))
         path = self.config.paper.heartbeat_file
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".tmp")

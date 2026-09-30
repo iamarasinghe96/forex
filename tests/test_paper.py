@@ -235,7 +235,8 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_
     feed.place_order.assert_not_called()
 
 
-def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path) -> None:
+def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO", logger="forex.paper")
     from forex.config import load_config
     from forex.context import ContextReviewer, ContextStore
     from forex.runtime import PaperRuntime
@@ -257,6 +258,7 @@ def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path)
     runtime.heartbeat(NOW, "RUNNING")
     runtime.heartbeat(NOW + timedelta(seconds=5), "RUNNING")
     assert health() == ["RUNNING"]
+    assert caplog.text.count("Running | balance AUD") == 1
     assert read_heartbeat(config.paper.heartbeat_file, NOW + timedelta(seconds=5), 1)
     runtime.heartbeat(NOW + timedelta(seconds=10), "HALTED")  # Status change is recorded at once.
     runtime.heartbeat(NOW + timedelta(seconds=70), "HALTED")

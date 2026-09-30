@@ -26,6 +26,7 @@ Write-Host ''
 Write-Host '  FOREX PAPER BOT (practice money only; no broker orders)' -ForegroundColor Green
 Write-Host '  Leave this window open. You can minimise it and close Remote Desktop with the X.'
 Write-Host '  Do not sign out of Windows. To stop the bot: click this title bar, then press Ctrl+C.'
+Write-Host '  A "Running | balance ..." line appears here about once a minute while all is well.'
 Write-Host '  Track progress on your phone: dashboard and Telegram.'
 Write-Host ''
 $bot = Join-Path $root '.venv\Scripts\forex.exe'
