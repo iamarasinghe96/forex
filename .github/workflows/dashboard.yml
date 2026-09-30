@@ -3,7 +3,8 @@ on:
   pull_request:
     paths: ['dashboard/**', '.github/workflows/dashboard.yml']
   push:
-    branches: [main]
+    # The reviewed branch running on the VPS publishes until PR #18 is reviewed and merged.
+    branches: [main, claude/determined-thompson-f4ewei]
     paths: ['dashboard/**', '.github/workflows/dashboard.yml']
   workflow_dispatch:
 permissions:
@@ -43,7 +44,7 @@ jobs:
         with:
           path: dashboard/dist
   deploy:
-    if: github.ref == 'refs/heads/main' && vars.DASHBOARD_DEPLOY_ENABLED == 'true'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/determined-thompson-f4ewei') && vars.DASHBOARD_DEPLOY_ENABLED == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -1,13 +1,33 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Forex · Operator</title></head>
-<body><header><div><span class="eyebrow">FOREX / OPERATOR</span><h1>Your trading desk</h1></div><button id="auth" disabled>Sign in</button></header>
-<main><p id="status" role="status">Checking configuration…</p><p class="notice">Read-only · PAPER and DEMO evidence · Strategy not formally validated</p>
-<section id="desk" hidden><div class="toolbar"><label>Account mode<select id="mode"><option>PAPER</option><option>DEMO</option></select></label><button id="refresh">Refresh history</button><span id="freshness"></span></div>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#0d151c"><title>Forex Paper Bot</title></head>
+<body><header><div><span class="eyebrow">FOREX PAPER BOT</span><h1>My bot</h1></div><button id="auth" disabled>Sign in</button></header>
+<main><p id="status" role="status">Checking configuration…</p>
+<section id="desk" hidden>
+<section id="simple" aria-label="Summary">
+<p id="bot-state" class="bot"></p>
+<label class="period">Show results for<select id="period"></select></label>
+<p id="range" class="range"></p>
+<div class="big">
+<div class="tile"><span>Invested</span><strong id="invested">–</strong></div>
+<div class="tile"><span>Profit</span><strong id="profit">–</strong></div>
+<div class="tile"><span>Balance now</span><strong id="balance">–</strong></div>
+<div class="tile"><span>Trades made</span><strong id="trades">–</strong></div>
+<div class="tile good"><span>Won</span><strong id="won">–</strong></div>
+<div class="tile bad"><span>Lost</span><strong id="lost">–</strong></div>
+</div>
+<h2>Open trades now</h2><div id="open" class="list"></div>
+<h2>Latest trades</h2><div id="recent" class="list"></div>
+<p class="notice">Practice money only (paper trading). No real money is used and no broker orders are sent. Results leave out broker commission, swap and slippage, and a few weeks of results do not prove the strategy works.</p>
+</section>
+<details id="technical"><summary>Technical details</summary>
+<div class="toolbar"><label>Account mode<select id="mode"><option>PAPER</option><option>DEMO</option></select></label><button id="refresh">Refresh history</button><span id="freshness"></span></div>
 <nav aria-label="Sections"><a href="#now">Now</a><a href="#performance">Performance</a><a href="#rejected">Rejected decisions</a><a href="#history">History</a><a href="#tax">Reserve</a><a href="#health">Health</a></nav>
 <section id="now"><h2>Now</h2><div id="cards" class="cards"></div><h3>Open positions</h3><div id="positions"></div></section>
 <section id="performance"><h2>Performance</h2><p>All-time totals come from the local journal's cloud mirror. Filtered results cover loaded records only.</p><div id="totals" class="cards"></div><div class="filters"><label>Pair<input id="pair" placeholder="All pairs"></label><label>Timeframe<input id="timeframe" placeholder="All"></label><label>Style<select id="style"><option value="">All styles</option><option>day</option><option>swing</option></select></label><label>From (UTC)<input id="from" type="date"></label><label>Through (UTC)<input id="through" type="date"></label></div><p id="scope"></p><div id="metrics" class="cards"></div><h3>Recorded equity</h3><svg id="curve" viewBox="0 0 800 180" role="img" aria-label="Equity over loaded balance observations"></svg><p id="curve-label"></p></section>
 <section id="rejected"><h2>Rejected & no-trade decisions</h2><p>These are part of the evidence, including hard risk blocks and context rejections.</p><div id="rejections"></div></section>
 <section id="history"><h2>Decision history</h2><div class="toolbar"><label>Search loaded records<input id="search" type="search" placeholder="Pair, reason, decision…"></label><label>Order<select id="sort"><option value="new">Newest first</option><option value="old">Oldest first</option></select></label><button id="more">Load older records</button><button id="export">Export loaded evidence</button></div><div id="events"></div></section>
 <section id="tax"><h2>Reserve estimate</h2><p>This accounting estimate is not a tax assessment. Financial-year grouping uses Australia/Sydney dates, July–June. Confirm applicability with your accountant.</p><div id="reserves"></div></section>
-<section id="health"><h2>Health & context costs</h2><p id="costs"></p><div id="health-events"></div></section></section>
-</main><footer>Local records remain authoritative. The cloud view may lag. Emergency procedures are separate from this dashboard.</footer><script type="module" src="/src/main.js"></script></body></html>
+<section id="health"><h2>Health & context costs</h2><p id="costs"></p><div id="health-events"></div></section>
+</details>
+</section>
+</main><footer>Read-only view. The VPS journal is the source of truth; this page can lag by a minute or two.</footer><script type="module" src="/src/main.js"></script></body></html>

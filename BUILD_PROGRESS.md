@@ -352,3 +352,18 @@ parametrized test (1-tick and 5-pip adverse moves) fails on the old code. 196 pa
   commission/swap/slippage in simulated P&L; no scheduled task/watchdog/reboot recovery yet,
   so a VPS reboot or Windows sign-out stops the bot until manually restarted.
 - Planned review: after 2026-10-07T02:16Z run paper-soak-report and the Layer 11 diagnosis.
+
+Operator usability request (2026-09-30): one-click VPS start and a simple phone dashboard.
+- scripts/run-bot.ps1: launcher that disables QuickEdit, refuses a duplicate start, starts
+  run-paper and retries every 120 s after a non-zero exit (e.g. market closed, MT5 down);
+  a normal stop (Ctrl+C, exit 0) ends it. Log: logs/launcher.log. Simulated loop test passed.
+- scripts/install-shortcuts.ps1: "Forex Paper Bot" icon on the Desktop and in Startup
+  (starts at sign-in, e.g. after a reboot once the user signs in; no auto-logon configured).
+- Dashboard: new default simple view (bot status, period dropdown, invested, profit, balance,
+  trades, won, lost, open and latest trades); technical view kept under "Technical details";
+  sign-in now persists on the device. 9 model tests and the browser setup test passed; phone
+  preview rendered with no page errors or horizontal overflow.
+- GitHub Pages: repo is public; Pages source set to GitHub Actions by the operator. Workflow
+  now also deploys from this branch when DASHBOARD_DEPLOY_ENABLED=true. Pending operator
+  steps: environment branch rule, four Firebase web variables, authorized domain
+  iamarasinghe96.github.io.

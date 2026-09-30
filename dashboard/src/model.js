@@ -38,3 +38,23 @@ export function evidenceCSV(events) {
   return '\uFEFF'+[['event_id','mode','kind','utc','entity_id','payload_json'],...events.map(e=>[e.event_id,e.mode,e.kind,e.observed_at_utc,e.entity_id,JSON.stringify(e.payload)])].map(row=>row.map(cell).join(',')).join('\r\n');
 }
 export function stale(timestamp, now=Date.now()) { const age=now-Date.parse(timestamp??''); return !Number.isFinite(age) || age<0 || age>120000; }
+export const PERIODS=[['1','Last 24 hours'],['7','Last 7 days'],['14','Last 2 weeks'],['30','Last 30 days'],['90','Last 3 months'],['all','All time']];
+export function periodStart(period,now=Date.now()){return period==='all'?null:now-Number(period)*86400000;}
+const closedAt=e=>Date.parse(e.payload?.closed_at_utc??e.observed_at_utc);
+export function simpleSummary(trades,summary,period,now=Date.now()){
+  const start=periodStart(period,now);
+  const closed=trades.filter(e=>e.kind==='trade_closed'&&numeric(e.payload?.pnl_aud)!==null&&Number.isFinite(closedAt(e))&&closedAt(e)<=now&&(start===null||closedAt(e)>=start)).sort((a,b)=>closedAt(a)-closedAt(b));
+  const pnl=closed.map(e=>Number(e.payload.pnl_aud)),profit=pnl.reduce((a,b)=>a+b,0);
+  const balance=numeric(summary?.latest_balance),allTime=numeric(summary?.realized_pnl_aud)??0;
+  // Every balance change comes from a closed trade, so the starting (invested) amount is balance minus all-time P&L.
+  const invested=balance===null?null:balance-allTime;
+  return {invested,balance,profit,profitPercent:invested?profit/invested*100:null,trades:closed.length,
+    won:pnl.filter(v=>v>0).length,lost:pnl.filter(v=>v<0).length,from:start,to:now,recent:closed.slice(-10).reverse()};
+}
+export function botState(summary,now=Date.now()){
+  const at=Date.parse(summary?.health_at_utc??'');
+  if(!Number.isFinite(at))return {running:false,label:'No updates received yet'};
+  const minutes=Math.max(0,Math.round((now-at)/60000));
+  if(now-at<=180000)return {running:true,label:summary.latest_health?.status==='HALTED'?'Paused (halt switch on)':'Running'};
+  return {running:false,label:`No update for ${minutes<120?minutes+' min':Math.round(minutes/60)+' h'} — normal while the market is closed at weekends, otherwise check the VPS`};
+}
