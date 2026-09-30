@@ -176,6 +176,9 @@ def main() -> int:
     parser.add_argument("--balance", type=float, default=None, help="Account size in AUD (default: paper balance)")
     parser.add_argument("--audusd", type=float, default=0.66, help="AUD/USD rate for sizing (approximate)")
     args = parser.parse_args()
+    missing = {"high_volatility_blocks_trend", "trend_efficiency_window"} - set(AnalysisConfig.model_fields)
+    if missing:
+        raise SystemExit("This scan needs the J6 strategy code (commit 2ded460 or later) on PYTHONPATH.")
     config = load_config(args.config)
     balance = args.balance or config.paper.starting_balance_aud or 100.0
     since = datetime.fromisoformat(args.since).replace(tzinfo=UTC)
