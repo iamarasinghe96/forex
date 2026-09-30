@@ -226,18 +226,104 @@ Web research on the techniques the bot uses (full reading list: docs/LEARNING_RE
 
 ---
 
+## Entry 5 — 2026-09-30 — Three papers on trading bots (uploaded PDFs)
+
+Three documents the operator uploaded. All three build an automated trading system; none shows an
+edge that would survive our testing standard. Their most useful content is what went wrong.
+
+### 5.1 "Forex Trading Robot Using Fuzzy Logic" (Shabani, Nasiri, Nafardi; arXiv 2507.06383, 2025)
+
+**What they did.** An MT5 robot for EUR/USD. RSI, CCI and Stochastic are each computed at three
+settings (for example RSI 9/14/21), and a "fuzzy logic" system turns them into buy/sell/hold votes
+(36 hand-written rules). A trade happens only when most of the votes agree.
+
+**Claimed result.** Tested on **6 months** (first half of 2022) with $10,000. Profit factor 2.35 and
+16.2% maximum drawdown for the fuzzy robot; the single-indicator robots were far worse: RSI profit
+factor 1.06 (drawdown 49.4%), CCI 0.99 (99.7%), Stochastic 0.95 (87.1%).
+
+**Assessment.** Evidence level: **weak**. One pair, one six-month period, no out-of-sample test,
+trading costs not clearly stated, thresholds and rules set by hand (easy to fit to the period
+shown). The more useful finding is the baseline: **plain overbought/oversold oscillator trading
+lost money or nearly so**, the same as our range-reversion results.
+
+### 5.2 "Automated Forex Trading Bot Using MQL4: A Reinforcement Learning-based Approach" (Markus, Raphael, Mazadu; ACIS 13(3), 2025)
+
+**What they did.** Describes reinforcement-learning agents (PPO, DQN, SAC) for EUR/USD in MT4, and a
+walk-forward test on 2013-2023 data.
+
+**Claimed result.** No walk-forward results are actually reported. The only numbers come from a
+**one-week demo**: 62% win rate, profit factor 1.45, 4.2% drawdown, with 4 example trades listed.
+The paper also calls the system "high-frequency", which does not match what it describes.
+
+**Assessment.** Evidence level: **opinion** (one week is noise). Worth keeping only as a checklist
+of safety features a live bot should have - maximum spread, news blackout, trading-session filter,
+drawdown limit, logging, running on a VPS. Our bot already has most of these; the gaps are a
+**news blackout** (J1-d) and a **maximum-spread check** (our paper broker assumes fixed costs).
+
+Lead worth following: it cites **Menkhoff, Sarno, Schmeling and Schrimpf, "Currency Momentum
+Strategies" (Journal of Financial Economics, 2012)** - a proper academic study. As generally
+summarised, it finds momentum profits across many currencies over 1-12 month horizons, but mostly
+in smaller, costlier currencies and much weaker in major pairs. Same message as Entry 4: momentum
+is a slow-horizon effect, and costs decide whether it survives. (Not yet read in full.)
+
+### 5.3 "Designing an automated trading bot for strategic order execution" (Antelo Cortegana; Bachelor thesis, HEG Geneva, 2024)
+
+**What they did.** Stocks, not forex (Amazon, daily bars). A small neural network (multilayer
+perceptron) predicts whether tomorrow closes higher, using OHLC, volume, EMA, RSI, MACD and VWAP
+plus the previous 14 days. Tuned with time-ordered cross-validation. Trades use a 5% take-profit
+and 2% stop, long only, with 1% slippage and $5 commissions.
+
+**Result (honestly reported).** Best validation accuracy **53.5%** (barely above a coin flip); the
+model mostly predicted "up". Simulated 1 Jan - 31 Aug 2024, starting with $10,000:
+
+| Strategy | End value | Profit factor |
+|---|---|---|
+| Buy and hold | $10,376 | 1.08 |
+| Indicator rules (RSI/MACD/EMA/VWAP) | $9,013 | 0.84 |
+| Neural network | $8,861 | 0.23 |
+| Random buy/sell | $7,516 | 0.39 |
+
+**Assessment.** Evidence level: **tested, negative**. The author concludes the model is not good
+enough to use. Useful lessons: (1) predicting next-day direction from indicators is close to
+guessing; (2) "doing nothing" (buy and hold) beat every active strategy; (3) frequent trading
+with costs (the random strategy) loses fastest; (4) its method - time-ordered splits, costs
+included, simple baselines - is the right way to test, and the same way we test.
+
+### What the three papers tell us together
+
+1. **Plain indicator signals don't pay.** Every paper's simple indicator baseline lost or roughly
+   broke even (5.1 RSI/CCI/Stochastic, 5.3 RSI/MACD/EMA/VWAP). Matches our range setups losing in
+   every year.
+2. **More complex models (fuzzy logic, neural networks, reinforcement learning) did not fix this**
+   in any properly tested case. The only strong-looking results (5.1, 5.2) are from very short
+   tests with no out-of-sample check.
+3. **Always compare to a simple baseline** ("do nothing", buy and hold, or random entries with the
+   same stops). We do not currently report one.
+
+**Candidate ideas added**
+
+| # | Plain-language rule | Test sketch | Data we have? |
+|---|---|---|---|
+| J5-a | **Indicator agreement:** only take a trend trade when the momentum oscillator agrees at several settings (for example RSI 9, 14 and 21 all above 50 for a buy). | Same trend-only exports; add the filter; compare trades kept vs removed. Low priority - weak source. | Yes. |
+| J5-b | **Random-entry baseline:** same stops, targets, pairs and trade count, but random direction/timing. Our strategy must beat it to count as an edge. | Add to the research scripts as a reference line on every future test. | Yes. |
+| J5-c | **Maximum-spread check:** skip a trade if the live spread is wider than a limit (for example 2x normal). | Needs spread history (Dukascopy bid/ask ticks) for a backtest; easy to add to the live bot as a safety rule. | Partly. |
+
+---
+
 ## Recurring themes across entries
 
 | Theme | Sources | Status |
 |---|---|---|
 | Higher-timeframe trend agreement (daily/weekly must agree before trading) | Entry 1 (claims 1, 3), Entry 2 (claims 1, 4), Entry 3 (claim 10) | Untested. Strongest recurring idea (3 of 3 sources): J1-a / J2-a. |
-| Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3), Entry 4 (1, 5) | Partly supported by our data (swing > day trades) and by academic trend-following research (1-12 month horizons). |
+| Slower timeframes are more reliable, less noise, cheaper | Entry 1 (claim 9), Entry 2 (claim 3), Entry 4 (1, 5), Entry 5 (Menkhoff lead) | Partly supported by our data (swing > day trades) and by academic trend-following research (1-12 month horizons). |
 | Higher-timeframe support/resistance levels matter | Entry 1 (claims 3, 5), Entry 2 (example), Entry 3 (claims 3, 4) | Untested: J1-b, J3-c, J3-e. |
-| News/scheduled events can override charts | Entry 1 (claim 10) | Untested: J1-d (needs an economic calendar). |
+| News/scheduled events can override charts | Entry 1 (claim 10), Entry 5 (5.2 news blackout) | Untested: J1-d (needs an economic calendar). |
 | Wait for an entry trigger ("buying pressure") rather than entering on location alone | Entry 2 (KST cross), Entry 3 (claims 8, 12) | Untested: J3-a. |
 | Stops sized to volatility (ATR) and placed beyond structure | Entry 3 (claims 4, 5) | Untested: J3-b. Our stops have no ATR padding. |
 | Let winners run with a trailing stop | Entry 3 (claim 6) | 3x ATR trail: passed 2012-2018 and 2021-2025 but FAILED the final year. 20-MA trail untested (J3-f). |
-| Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7) | Agrees with our data: range setups lost in every year. |
+| Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7), Entry 5 (5.1, 5.3 baselines) | Agrees with our data: range setups lost in every year. |
+| Complex models (fuzzy logic, neural networks, reinforcement learning) don't rescue weak signals | Entry 5 (5.1-5.3) | No properly tested case showed an edge; the neural network lost to buy and hold. Not planned. |
+| Beat a simple baseline before calling it an edge | Entry 5 (5.3) | Not yet reported in our tests: J5-b. |
 
 ## Suggested first test batch (to agree before running)
 
@@ -245,3 +331,4 @@ Test a small number of ideas, each written down in advance, so we don't "search 
 looks good": (1) **daily-trend alignment** (J1-a) - backed by all three sources; (2) **entry
 trigger candle** (J3-a); (3) **ATR-padded stop** (J3-b). Each on 2012-2018 and 2021-2025, one
 position per pair, after costs; a fresh untouched period is needed for any final check.
+Report a random-entry baseline (J5-b) next to each result, so "better than chance" is visible.
