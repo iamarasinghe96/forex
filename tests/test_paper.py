@@ -213,6 +213,7 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(tmp_
     config = load_config(Path("config.yaml"))
     config.analysis = compact_config()
     config.broker.symbols = ["EURUSD"]
+    config.context.enabled = False  # Independent of the operator's config.yaml choice.
     config.execution.session_rollover = None
     config.execution.session_rollover_hour_utc = 0
     config.paper.heartbeat_file = tmp_path / "heartbeat.json"

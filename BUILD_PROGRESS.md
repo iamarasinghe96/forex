@@ -251,3 +251,14 @@ read-only connection worked with it off. Close-only blocker resolved on the VPS.
 Note: first run returned empty 0.0 ticks (time 0) straight after the .a symbols were
 selected; MT5Broker.tick() does not reject an empty tick (paper freshness checks still
 reject it as stale). Candidate hardening for review, not changed.
+
+VPS service checks (pinned ccd00d7, from C:/forex): Groq openai/gpt-oss-120b PASS, JSON ok,
+0.9 s, 117/48 tokens; Gemini gemini-3.1-flash-lite PASS, JSON ok, 1.5 s, 17/9 tokens; cost
+not reported (unknown, not zero). OpenRouter google/gemma-4-31b-it:free HTTP 429 again on the
+single allowed retry: unverified third fallback; no billing change. Telegram getMe and
+getChat ok (no message sent). Firestore reachable for forex-paper-bot; access/operator present.
+
+Operator approved the supervised PAPER configuration: paper, telegram, context and cloud
+enabled; mode paper; demo_enabled false; emergency_halt_enabled false; AUD 100; New York
+close. tests/test_paper.py candidate-provenance test now disables context explicitly instead
+of relying on config.yaml defaults. 184 passed, Ruff clean.

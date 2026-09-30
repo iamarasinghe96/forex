@@ -72,13 +72,13 @@ backtest:
   report_directory: reports/backtest
 
 telegram:
-  enabled: false
+  enabled: true   # Operator-approved 2026-09-30 for supervised PAPER run.
   timeout_seconds: 10
 
 # Layer 6: disabled until local keys and current JSON-capable model IDs are configured.
 # Timeouts/retries/token caps are UNVALIDATED operational limits, not strategy parameters.
 context:
-  enabled: false
+  enabled: true   # Operator-approved 2026-09-30; review can only approve/reject/reduce.
   providers:
     - {name: groq, model: "openai/gpt-oss-120b"}
     - {name: gemini, model: "gemini-3.1-flash-lite"}
@@ -113,7 +113,7 @@ execution:
 # Layer 8 cloud mirror stays disabled until Firebase credentials/security setup is verified.
 # Retry/poll/batch limits are UNVALIDATED operational defaults.
 cloud:
-  enabled: false
+  enabled: true   # Operator-approved 2026-09-30; remote halt below stays off.
   emergency_halt_enabled: false
   project_id: "forex-paper-bot"
   poll_seconds: 10
@@ -123,7 +123,7 @@ cloud:
 
 # Layer 10 stays disabled until explicit paper setup; never places MT5 orders.
 paper:
-  enabled: false
+  enabled: true   # Operator-approved 2026-09-30 supervised PAPER run; never sends MT5 orders.
   database: data/paper.sqlite3
   starting_balance_aud: 100
   poll_seconds: 5
