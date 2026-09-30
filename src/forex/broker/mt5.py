@@ -94,9 +94,20 @@ class MT5Broker(Broker):
 
     def resolve_symbol(self, requested: str) -> SymbolSpec:
         target = requested.upper()
-        candidates = [s for s in (self.api.symbols_get() or ()) if str(s.name).upper() == target]
-        if not candidates:
-            candidates = [s for s in (self.api.symbols_get() or ()) if str(s.name).upper().startswith(target)]
+        override = self.config.symbol_overrides.get(target)
+        if override is not None:
+            # An explicit account mapping must never fall back to a different instrument.
+            info = self.api.symbol_info(override)
+            if info is None:
+                raise OperatorError(f"Configured broker symbol {override} for {requested} is unavailable.")
+            if (str(info.currency_base) + str(info.currency_profit)).upper() != target:
+                raise OperatorError(f"Configured broker symbol {override} has the wrong currency pair for {requested}.")
+            candidates = [info]
+        else:
+            symbols = self.api.symbols_get() or ()
+            candidates = [s for s in symbols if str(s.name).upper() == target]
+            if not candidates:
+                candidates = [s for s in symbols if str(s.name).upper().startswith(target)]
         if not candidates:
             raise OperatorError(
                 f"Broker symbol {requested} was not found, including suffix variants. In MT5 open "

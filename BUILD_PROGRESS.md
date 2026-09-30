@@ -171,3 +171,36 @@ tasks, broker restriction resolution, runtime start or seven-day soak completed.
 remains180passed from preceding runtime change; subsequent edits are setup/docs/preflight.
 User explicitly authorized PC credential setup; later transfer must adapt paths to C:/forex.
 Main remains unchanged; PR18 draft is not merge-approved. Preserve local PC.env user values.
+
+
+## Broker clarification: tradable .a forex symbols verified
+
+After IC Markets replied that this account uses .a instruments, a direct read-only check
+of PC MT5 account23011822 confirmed EURUSD.a, GBPUSD.a and USDJPY.a all report FULL access
+(mode4). Their unsuffixed counterparts remain CLOSEONLY(mode3). The screenshots compared
+unsuffixed EURUSD with ECL.NYSE.a (a share CFD); they did not show EURUSD.a failing.
+This resolves the symbol-availability question on the PC; no orders were sent.
+
+Before runtime startup, fix/verify broker symbol resolution: the previously inspected
+MT5Broker.resolve_symbol prefers an exact unsuffixed match, so it can still choose the
+close-only instrument even when .a is available. Use an explicit reviewed mapping or
+unambiguous broker-symbol selection, retaining canonical EURUSD/GBPUSD/USDJPY strategy
+identities. Audit market-data, position, risk, execution and journal paths and test suffix
+handling. Do not merely change strategy symbols globally to .a or bypass permission gates.
+Recheck actual VPS account/symbols; this PC result alone does not verify VPS setup.
+
+
+### Follow-up: explicit broker mapping implemented and checked
+
+Configured broker.symbol_overrides for EURUSD->EURUSD.a, GBPUSD->GBPUSD.a and
+USDJPY->USDJPY.a. MT5 resolver now honors explicit mappings even when unsuffixed symbols
+exist, rejects missing/wrong-pair mappings without fallback, and retains canonical strategy
+names. Broker intents already use spec.broker_name; existing suffixed positions resolve
+without remapping. The three live .a symbols returned positive tick sizes/values and full
+entry permission. No orders sent; Algo Trading remains off.
+34 affected MT5/execution/paper tests passed; Ruff and mypy(31files) clean. Added regression
+coverage for explicit mapping precedence, missing mapping and wrong currency pair.
+This supersedes the earlier instruction to implement mapping; review the existing fix first.
+Next: read-only VPS inventory at C:/forex, review/deploy pinned code, securely adapt credentials,
+verify actual VPS .a specs and resolve data-only connection/Algo Trading requirement before
+supervised PAPER startup. No unattended run or VPS checks completed by this PC result.

@@ -8,6 +8,7 @@ broker:
   terminal_path: null          # null lets MetaTrader5 find the installed terminal.
   account_currency: AUD        # Startup fails if MT5 reports a different currency.
   symbols: [EURUSD, GBPUSD, USDJPY]
+  symbol_overrides: {EURUSD: EURUSD.a, GBPUSD: GBPUSD.a, USDJPY: USDJPY.a}
   magic_number: 26092801
   connect_timeout_seconds: 30
 

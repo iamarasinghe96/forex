@@ -32,6 +32,7 @@ class BrokerConfig(BaseModel):
     terminal_path: str | None = None
     account_currency: str = Field(pattern=r"^[A-Z]{3}$")
     symbols: list[str] = Field(min_length=1)
+    symbol_overrides: dict[str, str] = Field(default_factory=dict)
     magic_number: int = Field(gt=0)
     connect_timeout_seconds: int = Field(gt=0, le=300)
 

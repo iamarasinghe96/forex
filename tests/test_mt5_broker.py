@@ -236,3 +236,35 @@ def test_historical_candles_use_each_dates_offset():
         datetime(2026, 1, 15, 9, tzinfo=UTC),
         datetime(2026, 9, 28, 8, tzinfo=UTC),
     ]
+
+
+def test_explicit_mapping_wins_over_exact_close_only_symbol():
+    api = FakeMT5()
+    api.symbols["EURUSD"] = ns(**{**vars(api.symbols["EURUSD.a"]), "name": "EURUSD", "trade_mode": 3})
+    cfg = config()
+    cfg.symbol_overrides = {"EURUSD": "EURUSD.a"}
+    broker = MT5Broker(cfg, "secret", api)
+    spec = broker.resolve_symbol("EURUSD")
+    assert spec.requested_name == "EURUSD"
+    assert spec.broker_name == "EURUSD.a"
+    assert api.selected == ["EURUSD.a"]
+    # Broker-position/intent identities already suffixed remain valid.
+    assert broker.resolve_symbol("EURUSD.a").broker_name == "EURUSD.a"
+
+
+def test_missing_explicit_mapping_never_falls_back_to_other_instrument():
+    api = FakeMT5()
+    cfg = config()
+    cfg.symbol_overrides = {"EURUSD": "EURUSD.missing"}
+    with pytest.raises(OperatorError, match="Configured broker symbol"):
+        MT5Broker(cfg, "secret", api).resolve_symbol("EURUSD")
+    assert api.selected == []
+
+
+def test_explicit_mapping_rejects_wrong_currency_pair():
+    api = FakeMT5()
+    cfg = config()
+    cfg.symbol_overrides = {"EURUSD": "USDAUD.a"}
+    with pytest.raises(OperatorError, match="wrong currency pair"):
+        MT5Broker(cfg, "secret", api).resolve_symbol("EURUSD")
+    assert api.selected == []
