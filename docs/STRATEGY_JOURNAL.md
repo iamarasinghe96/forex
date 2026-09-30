@@ -310,6 +310,55 @@ included, simple baselines - is the right way to test, and the same way we test.
 
 ---
 
+## Entry 6 — 2026-10-01 — Chart review: the US-dollar trend of 9-30 Sep 2026
+
+Source: the operator's MT5 H1 screenshots (EURUSD, GBPUSD, USDJPY, USDCHF), replayed through the
+bot's own analysis code on the candles stored on the VPS (`scripts/replay_decisions.py`, read-only).
+The live bot had only been running since 30 Sep, so it missed the move simply by not being on.
+
+**What the market did.** A broad US-dollar rally: EURUSD about -276 pips, GBPUSD about -248,
+USDJPY about +414 (to 158.4, then -154 on 25 Sep and sideways), USDCHF about +250 (not traded).
+
+**What the bot would have decided (hourly replay)**
+
+| Pair | First trend idea | What held it back |
+|---|---|---|
+| EURUSD | 16 Sep, two days in | 107 hours blocked by the HIGH_VOLATILITY rule while the trend measure was strong, including the start (14-15 Sep). |
+| GBPUSD | 17 Sep | 60 hours blocked the same way; the -89 pip day (16 Sep) was labelled TRANSITION. |
+| USDJPY | 18 Sep, after about +270 pips | 14-17 Sep labelled RANGE despite +76 to +100 pips a day - the old range setup would have sold into this rally. |
+
+Choppy periods (GBPUSD and USDJPY from 28 Sep) were correctly labelled RANGE/TRANSITION: no trades.
+
+**Rough simulated result** (one position per pair, entry at the hour's close, structural stop,
+1.5R target, stop to entry at +1R, research cost assumptions; risk checks and news review not
+applied):
+
+| Pair | Closed trades | Net |
+|---|---|---|
+| EURUSD | -1.05 R, +1.45 R, +1.49 R (the last took 13 days) + one still open | +132 pips, +1.89 R |
+| GBPUSD | +1.48 R + one still open since 17 Sep | +74 pips, +1.48 R |
+| USDJPY | -1.01 R (short on 9 Sep, just before the rally), -0.01 R (long reached +1R, stopped at entry in the 25 Sep drop) | -89 pips, -1.02 R |
+| **Total** | 6 closed | **+117 pips, +2.35 R** |
+
+At the bot's 2-5% risk per trade that is roughly +5% to +12% of the account for three weeks.
+The market moved about 940 pips across the three pairs; the rules captured about 12% of it.
+
+**Assessment.** Evidence level: **anecdote** (one favourable month). It shows the trend rules do
+what they are designed to do in a clean trend, and where the gains leak: late detection, the
+volatility block, and a 1.5R cap on moves that ran 3-5 times further. It does not change the
+13-year finding that such months are cancelled out by losing ones in choppy markets. The
+breakeven rule helped here: it turned the USDJPY long into a scratch instead of a -1R loss.
+
+**Candidate ideas added**
+
+| # | Plain-language rule | Test sketch | Data we have? |
+|---|---|---|---|
+| J6-a | **Don't let the volatility block stop a strong trend:** when the H4 trend measure is above its threshold, label the market as a trend even if volatility is in the top 10%. | Same exports and costs, 2012-2018 and 2021-2025; compare trades added by the change on their own. | Yes. |
+| J6-b | **Faster trend detection:** shorter lookback for the trend measure, so trends are recognised in about 1-2 days instead of about 3. | Same; expect more false starts in chop - the test is whether net R improves. | Yes. |
+| J6-c | **Let winners run further** once a trade is past +1R (bigger target or trailing stop). | The 3x ATR trail passed two periods but failed the final year; retest only combined with J6-a/J6-b, pre-registered. | Yes. |
+
+---
+
 ## Recurring themes across entries
 
 | Theme | Sources | Status |
@@ -320,9 +369,10 @@ included, simple baselines - is the right way to test, and the same way we test.
 | News/scheduled events can override charts | Entry 1 (claim 10), Entry 5 (5.2 news blackout) | Untested: J1-d (needs an economic calendar). |
 | Wait for an entry trigger ("buying pressure") rather than entering on location alone | Entry 2 (KST cross), Entry 3 (claims 8, 12) | Untested: J3-a. |
 | Stops sized to volatility (ATR) and placed beyond structure | Entry 3 (claims 4, 5) | Untested: J3-b. Our stops have no ATR padding. |
-| Let winners run with a trailing stop | Entry 3 (claim 6) | 3x ATR trail: passed 2012-2018 and 2021-2025 but FAILED the final year. 20-MA trail untested (J3-f). |
-| Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7), Entry 5 (5.1, 5.3 baselines) | Agrees with our data: range setups lost in every year. |
+| Let winners run with a trailing stop | Entry 3 (claim 6), Entry 6 (1.5R cap took ~12% of the move) | 3x ATR trail: passed 2012-2018 and 2021-2025 but FAILED the final year. 20-MA trail untested (J3-f). |
+| Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7), Entry 5 (5.1, 5.3 baselines), Entry 6 (USDJPY rally labelled RANGE) | Agrees with our data: range setups lost in every year. |
 | Complex models (fuzzy logic, neural networks, reinforcement learning) don't rescue weak signals | Entry 5 (5.1-5.3) | No properly tested case showed an edge; the neural network lost to buy and hold. Not planned. |
+| Trend detection is late; the volatility block removes strong trend hours | Entry 6 | Seen in Sep 2026 replay; untested: J6-a, J6-b. |
 | Beat a simple baseline before calling it an edge | Entry 5 (5.3) | Not yet reported in our tests: J5-b. |
 
 ## Suggested first test batch (to agree before running)
