@@ -442,3 +442,15 @@ signal has no demonstrated edge beyond break-even; further filtering would be da
 Final holdout remains untouched. Proposed next hypothesis (not yet registered): trend entries
 with an ATR trailing exit (multiple 3, fixed a priori) instead of the fixed 1.5R target, which
 must pass on both independent periods.
+
+### Pre-registration 2 (recorded before any trailing-exit export was run on real data)
+
+Hypothesis: the fixed 1.5R target truncates the large winners trend-following depends on.
+Candidate "trend55 + trailing": trend setups only, confidence >= 55, every signal eligible,
+one open trade per pair, all three pairs; exit model fixed a priori: no practical target
+(reward_risk 1000), break-even at 1R (existing), then 3 x H1 ATR trailing stop, maximum hold
+480 H1 bars. Assumed costs as before. Pass rule: net average R > 0 AND net profit factor > 1 on
+BOTH independent periods: 2012-2018 (single window from 2012-04-01) and 2021-2025 (walk-forward
+test windows, final holdout excluded). No other multiple or horizon will be tried before this
+verdict is recorded. Tooling: research_trades.py --reward-risk/--atr-trailing/--horizon-bars;
+research_candidate.py --rule trend55. Verified on synthetic data (exits become STOP/trailing only).

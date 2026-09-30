@@ -86,8 +86,18 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("reports/backtest/oos-trades.csv"))
     parser.add_argument("--start-utc", type=datetime.fromisoformat,
                         help="Evaluate one window from this UTC time to the end of the data (separate dataset only)")
+    parser.add_argument("--reward-risk", type=float, help="Fixed target in R (e.g. 1000 = effectively no target)")
+    parser.add_argument("--atr-trailing", type=float, help="ATR trailing-stop multiple after break-even")
+    parser.add_argument("--horizon-bars", type=int, help="Maximum holding time in H1 bars")
     args = parser.parse_args()
     config = load_config(args.config)
+    for name, value in (("reward_risk", args.reward_risk), ("atr_trailing_multiple", args.atr_trailing),
+                        ("simulation_horizon_bars", args.horizon_bars)):
+        if value is not None:
+            setattr(config.backtest, name, value)
+    print(f"Exit model: target {config.backtest.reward_risk} R | break-even at {config.backtest.breakeven_at_r} R | "
+          f"ATR trailing {config.backtest.atr_trailing_multiple} | max hold {config.backtest.simulation_horizon_bars} bars",
+          flush=True)
     dataset, _ = validate_research_database(args.research_database, config.broker.symbols, config.market_data)
     store = CandleStore(args.research_database)
     args.out.parent.mkdir(parents=True, exist_ok=True)
