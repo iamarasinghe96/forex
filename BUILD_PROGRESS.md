@@ -484,3 +484,28 @@ trailing exit) has shown a reliable edge across 2012-2018, 2021-2025 and the fin
 live paper bot remains trend-only with the fixed 1.5R target for observation; real-money use of
 this strategy is not recommended. Operator is studying trading to propose new hypotheses, which
 must be pre-registered and tested on 2012-2018 and 2021-2025 (a fresh holdout will be needed).
+
+### Protection scan on stored candles (exploration, 2026-10-01) and pre-registration 3 (J6-a, J6-b)
+
+Operator asked to remove over-protective layers. Added switches, all off by default (live
+behaviour unchanged): analysis.high_volatility_blocks_trend (J6-a), analysis.trend_efficiency_window
+(J6-b), paper.target_reward_risk and paper.atr_trailing_multiple (J6-c). scripts/scan_protections.py
+replayed the VPS's stored candles 2025-11-15 to 2026-10-01 (largely the consumed final-holdout year,
+so exploration only), one layer removed at a time, live exits, A$100 balance, 2-5% sizing:
+current rules took only 2 trades (+2.94 R, +A$9.35); about 1,300 idea-hours were stopped by the
+conviction minimum and about 240 by the 0.01-lot minimum (a A$100 account cannot hold stops wider
+than about 13-33 pips at 2-5% risk). Removing the conviction and lot limits gave 83 trades, 35% wins,
+-3.59 R, -A$64.79, with up to 29% of the account at risk on one trade. Under those relaxed limits:
+J6-a -5.29 R (worst trend variant), J6-b -1.44 R (only variant better than current), J6-a+b
+-3.53 R, setup-strength threshold off -22.28 R, range setups on -438 R. On this year the blocked
+trades lost on balance: the layers saved money rather than cost it. Live journal 30 Sep confirmed
+the blocks in action (minimum volume over budget, conviction 54 < 55, stop on wrong side).
+
+Pre-registration 3 (recorded before any J6 export exists): exports with research_trades.py
+--analysis-set (J6-a: high_volatility_blocks_trend=false; J6-b: trend_efficiency_window=10), standard
+exit (1.5R target, break-even 1R), on 2012-2018 (--start-utc 2012-04-01, dukascopy-2012-2018) and
+2021-2025 (walk-forward test windows, dukascopy-research), evaluated with research_candidate.py
+--rule trend55. A variant passes only if, on BOTH periods, net average R > 0, net PF > 1 and net
+average R is above the baseline trend55 result on the same period (existing exports
+trades-2012-2018.csv and oos-trades.csv). Window length 10 is fixed in advance; no other values
+will be tried before the verdict. The account-size lines (A$100 / A$1,000) are information only.

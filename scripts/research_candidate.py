@@ -19,6 +19,16 @@ from research_entries import number_signals
 from research_summary import DEFAULT_COST_PIPS, LIVE_BANDS, Row, load, one_at_a_time, stats
 
 MINIMUM_POSITION = {"confirm3": 3, "trend55": 1}
+# Account-size check: risk % per confidence band (config.yaml) and an approximate A$ cost of one pip
+# at the broker's 0.01-lot minimum (EURUSD/GBPUSD ~US$0.10 at AUDUSD ~0.66; USDJPY slightly less).
+BAND_RISK_PERCENT = {"LOW": 2.0, "MEDIUM": 3.5, "HIGH": 5.0}
+AUD_PER_PIP_MIN_LOT = 0.15
+
+
+def affordable(row: Row, balance: float) -> bool:
+    """Whether a 0.01-lot trade with this stop fits the band's risk budget."""
+    budget = balance * BAND_RISK_PERCENT.get(str(row["band"]), 0.0) / 100
+    return float(row["stop_pips"]) * AUD_PER_PIP_MIN_LOT <= budget  # type: ignore[arg-type]
 
 
 def candidate(rows: list[Row], rule: str = "confirm3") -> list[Row]:
@@ -51,6 +61,12 @@ def main() -> None:
     print("  NET by year: " + " | ".join(f"{y} {sum(v) / len(v):+.3f} R ({len(v)})" for y, v in sorted(years.items())))
     print(f"\nVERDICT: {'PASS' if passed else 'FAIL'} (rule: net average R > 0 and net profit factor > 1)")
     print("A pass on one period is evidence, not proof; the untouched final year remains the last check.")
+    stops = sorted(float(t["stop_pips"]) for t in taken)  # type: ignore[arg-type]
+    if stops:
+        print(f"\nAccount size (information only; median stop {stops[len(stops) // 2]:.0f} pips):")
+        for balance in (100.0, 1000.0):
+            fits = candidate([t for t in rows if affordable(t, balance)], args.rule)
+            print(f"  A${balance:,.0f}: trades that fit the 0.01-lot minimum: {stats(fits, 'net', span)}")
 
 
 if __name__ == "__main__":

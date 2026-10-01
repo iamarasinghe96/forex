@@ -89,8 +89,21 @@ def main() -> None:
     parser.add_argument("--reward-risk", type=float, help="Fixed target in R (e.g. 1000 = effectively no target)")
     parser.add_argument("--atr-trailing", type=float, help="ATR trailing-stop multiple after break-even")
     parser.add_argument("--horizon-bars", type=int, help="Maximum holding time in H1 bars")
+    parser.add_argument("--analysis-set", action="append", default=[], metavar="KEY=VALUE",
+                        help="Override an analysis setting, e.g. trend_efficiency_window=10 (repeatable)")
     args = parser.parse_args()
     config = load_config(args.config)
+    if args.analysis_set:
+        import yaml
+
+        from forex.config import AnalysisConfig
+        changes = {key.strip(): yaml.safe_load(value) for key, value in
+                   (item.split("=", 1) for item in args.analysis_set)}
+        unknown = set(changes) - set(AnalysisConfig.model_fields)
+        if unknown:
+            raise SystemExit(f"Unknown analysis setting(s): {sorted(unknown)}")
+        config.analysis = AnalysisConfig.model_validate({**config.analysis.model_dump(), **changes})
+        print(f"Analysis overrides: {changes}", flush=True)
     for name, value in (("reward_risk", args.reward_risk), ("atr_trailing_multiple", args.atr_trailing),
                         ("simulation_horizon_bars", args.horizon_bars)):
         if value is not None:
