@@ -556,3 +556,25 @@ for 30 s (e.g. the 17:00 New York rollover), which failed the whole cycle. Now a
 pauses its own entries and stop checks (valuation uses its last valid price); the cycle fails only
 if a pair has no fresh quote for paper.stale_quote_alert_seconds (900 s), which still reports
 weekend closures once and then hourly. Future-dated quotes still fail (clock fault).
+
+### Learning loop with Telegram-approved strategy changes (2026-10-01)
+
+Operator request: the bot should learn from each trade with AI reasoning, build a score per
+strategy decision, and apply operator-approved changes without VPS logins or code edits, using a
+prompt the operator pastes into Claude and a reply pasted back. Built (docs/LEARNING_LOOP.md):
+- src/forex/learning.py: trade facts from journal provenance; decision buckets (pair, regime,
+  session, style, volatility, pair+side, pair+regime); shrunk score = total R / (trades + prior);
+  size factor (only down, floor min_factor, after min_trades); StrategyPatch, a strict whitelisted
+  and bounded JSON change set (no code); overlay merge/apply; Claude review prompt builder.
+- src/forex/learning_worker.py: background scoring and AI post-mortem per closed trade
+  (src/forex/prompts/trade-postmortem-v1.md); rule-based fallback; Telegram "Trade review" message.
+- src/forex/telegram_commands.py: operator-chat-only commands /scores /settings /review (prompt
+  file) /approve /reject /rollback; pasted replies become PENDING change sets until approved.
+- Runtime: reloads the approved overlay (data/<paper db>.strategy-overlay.json) each cycle,
+  rebuilds risk policy/execution, announces "Strategy updated", skips paused pairs, applies the
+  learned size factor after the AI news review. Invalid overlay keeps current settings and alerts.
+- config: learning section enabled. Safety: patches cannot touch execution, credentials or files;
+  learning cannot raise size above configured risk; real-money and demo execution stay disabled.
+Tests: tests/test_learning.py (end-to-end trade -> score -> review -> Telegram message, sizing,
+whitelist rejection, overlay merge, approval/rollback, operator-only chat, runtime reload, paused
+pair, broker-suffix symbols).

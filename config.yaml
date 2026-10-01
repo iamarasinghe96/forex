@@ -147,3 +147,17 @@ paper:
   # review cannot push the reward below the 1.5R minimum.
   target_reward_risk: 10.0      # Let winners run: far target, the trailing stop exits (null = 1.5R).
   atr_trailing_multiple: 3.0    # Trail 3x H1 ATR behind price once a trade is +1R (null = off).
+
+# Learning loop (PAPER only). Every closed trade is scored and explained; weak decision buckets
+# trade smaller (never above the risk above). Strategy changes arrive only as validated change
+# sets approved in Telegram (/review, paste Claude's reply, /approve N); see docs/LEARNING_LOOP.md.
+learning:
+  enabled: true
+  trade_reviews: true        # AI explanation of each closed trade (uses the context providers above).
+  apply_to_sizing: true
+  prior_trades: 20           # Caution: a bucket's score counts this many imaginary 0 R trades.
+  min_trades: 10             # A bucket changes sizing only after this many closed trades.
+  min_factor: 0.25           # Weakest buckets trade at 25% of normal size.
+  skip_below_r: null         # e.g. -0.3 to skip clearly losing buckets entirely.
+  disabled_pairs: []
+  telegram_commands: true

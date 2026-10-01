@@ -23,7 +23,11 @@ class NotificationWorker:
             cursor = db.execute("SELECT sequence FROM notification_cursor WHERE id=1").fetchone()[0]
         count = 0
         for event in self.journal.events("PAPER", after_sequence=cursor, limit=100):
-            if event.kind in {"trade_opened", "trade_closed", "alert", "error", "daily_summary"}:
+            if event.kind in {"trade_review", "strategy_updated"}:
+                # Learning messages are composed by the bot from its own records (no account details).
+                self.alerter.send(str(event.payload.get("message", event.kind))[:3500])
+                count += 1
+            elif event.kind in {"trade_opened", "trade_closed", "alert", "error", "daily_summary"}:
                 # Do not forward complete payloads, account identifiers or provider requests.
                 self.alerter.send(f"{event.kind}: {event.observed_at_utc.isoformat()}; "
                                   f"{event.payload.get('symbol', '')} "

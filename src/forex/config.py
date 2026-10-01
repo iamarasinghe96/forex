@@ -244,6 +244,22 @@ class PaperConfig(BaseModel):
     atr_trailing_multiple: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
+class LearningConfig(BaseModel):
+    """Paper learning loop: trade scoring, AI trade reviews and Telegram-approved strategy patches."""
+
+    enabled: bool = False
+    trade_reviews: bool = True        # AI explanation of every closed trade (uses context providers).
+    apply_to_sizing: bool = True      # Weak-scoring setups trade smaller; never above configured risk.
+    prior_trades: int = Field(default=20, ge=1, le=500)   # Shrinkage: a bucket needs many trades to count.
+    min_trades: int = Field(default=10, ge=1, le=500)     # Below this a bucket does not change sizing.
+    min_factor: float = Field(default=0.25, gt=0, le=1)   # Smallest size multiplier for a weak bucket.
+    skip_below_r: float | None = Field(default=None, ge=-2, le=0)  # Optional: skip clearly losing buckets.
+    disabled_pairs: list[str] = Field(default_factory=list)
+    telegram_commands: bool = True    # Accept /scores, /review, patches and /approve from the operator chat.
+    review_prompt_file: Path = Path("src/forex/prompts/learning-review-v1.md")
+    postmortem_prompt_file: Path = Path("src/forex/prompts/trade-postmortem-v1.md")
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -259,6 +275,7 @@ class AppConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     paper: PaperConfig = Field(default_factory=PaperConfig)
+    learning: LearningConfig = Field(default_factory=LearningConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

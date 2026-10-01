@@ -8,6 +8,7 @@ import logging
 import sqlite3
 from collections.abc import Callable
 from contextlib import closing
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -25,6 +26,16 @@ from forex.domain import Timeframe, _require_utc
 from forex.errors import OperatorError
 from forex.execution import ExecutionService, ExecutionStore
 from forex.journal import JournalStore
+from forex.learning import (
+    LearningStore,
+    apply_overlay,
+    candidate_keys,
+    describe_changes,
+    overlay_path,
+    read_overlay,
+    scale_plan,
+    sizing_decision,
+)
 from forex.market_data import validate_candle_freshness
 from forex.notifications import NotificationWorker
 from forex.paper import PaperBroker
@@ -76,6 +87,11 @@ class PaperRuntime:
         if config.mode != "paper" or not config.execution.rollover_configured:
             raise OperatorError("Paper runtime requires paper mode and an explicit daily-risk rollover hour.")
         self.config, self.feed, self.paper, self.reviewer, self.clock = config, feed, paper, reviewer, clock
+        # config.yaml as loaded; operator-approved learning patches are layered on top of it.
+        self.base_config = config
+        self.overlay_path = overlay_path(paper.path)
+        self.overlay_digest = ""
+        self.learning = LearningStore(paper.path)
         self.policy = policy_from_config(config.risk)
         self.journal = JournalStore(paper.path)
         self.sessions = RiskSessionStore(paper.path)
@@ -101,6 +117,37 @@ class PaperRuntime:
             source.update(str(path.relative_to(Path(__file__).parent)).encode())
             source.update(path.read_bytes())
         self.code_fingerprint = source.hexdigest()
+        self.reload_strategy(self.started, announce=False)
+
+    def reload_strategy(self, now: datetime, *, announce: bool = True) -> None:
+        """Load the approved strategy overlay when it changes; an invalid file keeps current settings."""
+        try:
+            raw = self.overlay_path.read_bytes() if self.overlay_path.exists() else b""
+        except OSError:
+            return
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest == self.overlay_digest:
+            return
+        self.overlay_digest = digest
+        try:
+            effective = apply_overlay(self.base_config, read_overlay(self.overlay_path))
+        except (ValueError, OSError):
+            self.emit("alert", "overlay:" + digest[:16], {"reason": "Approved strategy settings file is invalid; "
+                      "previous settings kept. Send /rollback in Telegram."}, now)
+            return
+        changes = describe_changes(self.config, effective)
+        self.config = effective
+        self.policy = policy_from_config(effective.risk)
+        self.execution = ExecutionService(self.paper, ExecutionStore(self.paper.path), self.sessions,
+                                          self.policy, effective.broker.magic_number,
+                                          effective.execution.maximum_quote_age_seconds,
+                                          effective.execution.maximum_decision_age_seconds)
+        self.config_fingerprint = hashlib.sha256(effective.model_dump_json().encode()).hexdigest()
+        if changes:
+            logging.getLogger("forex.paper").info("Strategy settings loaded: %s", "; ".join(changes))
+            if announce:
+                self.emit("strategy_updated", digest[:16] + "|" + now.isoformat(),
+                          {"changes": changes, "message": "Strategy updated and running: " + "; ".join(changes)}, now)
 
     def track_stale_quotes(self, now: datetime) -> set[str]:
         stale = {symbol for symbol in self.config.broker.symbols if not self.paper.quote_fresh(symbol, now)}
@@ -124,6 +171,7 @@ class PaperRuntime:
 
     def cycle(self) -> None:
         now = self.clock()
+        self.reload_strategy(now)
         live_account = self.feed.account_state()
         if live_account.login != self.paper.account.login or live_account.currency != "AUD":
             raise OperatorError("Market-data account identity changed. Halt paper and inspect MT5.")
@@ -162,6 +210,8 @@ class PaperRuntime:
             if symbol in stale:
                 logging.getLogger("forex.paper").info("%s quote is quiet; skipping this hour's evaluation for it", symbol)
                 continue
+            if symbol.upper() in {p.upper() for p in self.config.learning.disabled_pairs}:
+                continue  # Paused by an approved learning review; open trades are still managed.
             bars = {}
             for timeframe in Timeframe:
                 recent = closed_candles(self.feed.candles(symbol, timeframe,
@@ -208,6 +258,15 @@ class PaperRuntime:
                 continue
             reviewed = self.reviewer.review(risk, snap.spec, payload,
                                             {identity: canonical_json(payload)}, fresh_now)
+            learning = self.config.learning
+            if reviewed.plan is not None and learning.enabled and learning.apply_to_sizing:
+                sizing = sizing_decision(self.learning.scores(learning.prior_trades),
+                                         candidate_keys(symbol, json_value(candidate)),
+                                         min_trades=learning.min_trades, min_factor=learning.min_factor,
+                                         skip_below_r=learning.skip_below_r)
+                self.emit("learning_decision", identity, {"symbol": symbol, "sizing": json_value(sizing)}, fresh_now)
+                reviewed = (replace(reviewed, plan=None, status="LEARNING_SKIPPED", rationale=sizing.reason)
+                            if sizing.skip else scale_plan(reviewed, sizing.factor, snap.spec))
             self.emit("context_review", identity, {**payload, "review": json_value(reviewed)}, self.clock())
             if reviewed.alert_required:
                 self.emit("alert", "context:" + identity, {"reason": "All context providers unavailable"}, self.clock())
@@ -276,6 +335,7 @@ class PaperRuntime:
         thread = Thread(target=worker.run, args=(stop, self.clock, self.config.cloud.poll_seconds,
                                                 self.config.cloud.batch_size), daemon=True) if worker else None
         alert_thread = None
+        helpers: list[Thread] = []
         if self.config.telegram.enabled:
             secrets = Secrets()
             if not secrets.telegram_bot_token or not secrets.telegram_chat_id:
@@ -284,10 +344,24 @@ class PaperRuntime:
                 secrets.telegram_bot_token, secrets.telegram_chat_id,
                 self.config.telegram.timeout_seconds, "PAPER"))
             alert_thread = Thread(target=notifier.run, args=(stop,), daemon=True)
+            if self.config.learning.enabled and self.config.learning.telegram_commands:
+                from forex.telegram_commands import CommandHandler, TelegramCommandWorker
+                handler = CommandHandler(self.base_config, self.learning, self.overlay_path, self.clock)
+                commands = TelegramCommandWorker(handler, secrets.telegram_bot_token, secrets.telegram_chat_id,
+                                                 self.learning)
+                helpers.append(Thread(target=commands.run, args=(stop,), daemon=True))
+        if self.config.learning.enabled:
+            from forex.learning_worker import LearningWorker
+            learner = LearningWorker(lambda: self.config, self.journal, self.learning,
+                                     getattr(self.reviewer, "provider", None),
+                                     lambda symbol: self.candles.load(symbol, Timeframe.H1), self.clock)
+            helpers.append(Thread(target=learner.run, args=(stop,), daemon=True))
         if thread:
             thread.start()
         if alert_thread:
             alert_thread.start()
+        for helper in helpers:
+            helper.start()
         cycles = 0
         try:
             while not stop.is_set() and (maximum_cycles is None or cycles < maximum_cycles):
