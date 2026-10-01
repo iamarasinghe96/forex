@@ -236,6 +236,8 @@ class PaperConfig(BaseModel):
     error_grace_seconds: float = Field(default=30, ge=0)
     halt_file: Path = Path("data/HALT_PAPER")
     no_trade_hours: float = Field(default=168, gt=0)
+    # Open trades allowed per pair. All research assumed 1; more stacks risk on the same move.
+    max_positions_per_pair: int = Field(default=1, ge=1, le=4)
     # A pair without a fresh quote pauses its entries; only a silence longer than this is an error.
     stale_quote_alert_seconds: float = Field(default=900, gt=0)
     # J6-c exits: target in R (None = risk.minimum_reward_risk) and an ATR trailing stop that

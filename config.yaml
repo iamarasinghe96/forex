@@ -145,6 +145,7 @@ paper:
   no_trade_hours: 168
   # Journal J6-c exits (UNTESTED; paper only). Use a target above 1.5 so small price moves during
   # review cannot push the reward below the 1.5R minimum.
+  max_positions_per_pair: 1     # One open trade per pair, as in every backtest (hourly re-entries stacked risk).
   target_reward_risk: 10.0      # Let winners run: far target, the trailing stop exits (null = 1.5R).
   atr_trailing_multiple: 3.0    # Trail 3x H1 ATR behind price once a trade is +1R (null = off).
 

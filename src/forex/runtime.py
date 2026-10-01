@@ -239,6 +239,13 @@ class PaperRuntime:
                 self.emit("hard_risk_block", identity, {**payload, "reason": "Broker market entry permission blocked"}, self.clock())
                 self.store.complete(identity, self.clock())
                 continue
+            holding = sum(1 for p in snap.positions if p.symbol.upper().split(".")[0] == symbol.upper())
+            if holding >= self.config.paper.max_positions_per_pair:
+                # Backtests take one trade per pair at a time; hourly re-entries would stack risk.
+                self.emit("no_trade", identity, {**payload, "reason": f"Already holding {holding} {symbol} "
+                          "position(s) (paper.max_positions_per_pair)"}, self.clock())
+                self.store.complete(identity, self.clock())
+                continue
             entry = snap.tick.ask if candidate.side is Side.LONG else snap.tick.bid
             stop = Decimal(str(candidate.structural_reference_levels[
                 "rolling_low" if candidate.side is Side.LONG else "rolling_high"]))

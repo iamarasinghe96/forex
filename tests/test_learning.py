@@ -253,3 +253,24 @@ def test_broker_symbol_suffix_maps_to_the_plain_pair_bucket() -> None:
     assert facts is not None and facts.symbol == "USDJPY" and facts.r == pytest.approx(2.0)
     assert "pair_regime:USDJPY|TREND_DOWN" in facts.buckets() and "volatility:HIGH" in facts.buckets()
     assert trade_facts("t2", {"symbol": "EURUSD"}) is None  # No provenance: not scored.
+
+
+def test_only_one_open_trade_per_pair_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime, paper, _ = runtime_fixture(tmp_path, monkeypatch)
+    runtime.cycle()
+    assert len(paper.positions()) == 1
+    runtime.store = Mock(claim=Mock(return_value=True), complete=Mock())  # Same signal again next hour.
+    runtime.next_analysis = NOW
+    runtime.cycle()
+    assert len(paper.positions()) == 1
+    assert any("Already holding 1 EURUSD" in e.payload.get("reason", "")
+               for e in runtime.journal.events(limit=500) if e.kind == "no_trade")
+
+
+def test_daily_summary_message_is_readable(tmp_path: Path) -> None:
+    journal = JournalStore(tmp_path / "j.sqlite3")
+    journal.append("PAPER", "daily_summary", "2026-10-01", {"closed_trades": 2, "wins": 1, "losses": 1,
+                                                              "realized_pnl_aud": "12.5"}, NOW)
+    sender = Mock()
+    NotificationWorker(journal, sender).once()
+    assert sender.send.call_args.args[0] == "Daily summary 2026-10-01: 2 trades closed (1 won, 1 lost), P&L A$+12.50."

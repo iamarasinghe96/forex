@@ -578,3 +578,12 @@ prompt the operator pastes into Claude and a reply pasted back. Built (docs/LEAR
 Tests: tests/test_learning.py (end-to-end trade -> score -> review -> Telegram message, sizing,
 whitelist rejection, overlay merge, approval/rollback, operator-only chat, runtime reload, paused
 pair, broker-suffix symbols).
+
+### Fix: one open trade per pair (2026-10-01)
+
+Live observation on the A$1,000 account: four EURUSD shorts opened at 09:00-12:00 UTC, one per
+hourly signal. The runtime only capped total positions (4) and total open risk (20%); research and
+scans always assumed one position per pair, and the old confidence floor had hidden the gap.
+Added paper.max_positions_per_pair (default and config 1): further signals on a held pair are
+journaled as no_trade "Already holding N ...". Existing open trades are managed normally.
+Telegram daily summary now reads "Daily summary <day>: N trades closed (W won, L lost), P&L A$x".
