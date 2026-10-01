@@ -518,3 +518,24 @@ risk budget (stops up to roughly 130 pips at 2%). Strategy settings unchanged (t
 switches off). The A$100 journal stays in data/paper.sqlite3. Journal summaries now carry
 first_event_at_utc and the dashboard ignores closed trades mirrored before it, so the earlier
 A$100 trade is not mixed into the new account's results. Real-money and demo execution stay disabled.
+
+### Result of pre-registration 3 (J6-a, J6-b), 2026-10-01
+
+trend55, standard exit (1.5R, break-even 1R), net, one position per pair; baseline = same rule on
+the existing exports:
+
+| Variant | 2012-2018 avg R / PF / trades | 2021-2025 avg R / PF / trades | Verdict |
+|---|---|---|---|
+| Baseline (current rules) | +0.028 / 1.06 / 475 | +0.040 / 1.09 / 361 | reference |
+| J6-a volatility block off | +0.037 / 1.08 / 511 | +0.019 / 1.04 / 395 (below baseline) | FAIL |
+| J6-b trend_efficiency_window=10 | -0.003 / 0.99 / 713 | +0.091 / 1.22 / 536 | FAIL |
+
+Neither variant beat the baseline on both periods, so per the registration neither is switched on.
+J6-b's strong 2021-2025 result (+48.7 R) did not repeat in 2012-2018 (-2.0 R): period-dependent,
+led again by USDJPY (positive in every run so far, but it failed the final holdout). J6-a changed
+little either way. Account-size lines: on A$100 only 0-2 trades in each period fit the 0.01-lot
+minimum (median stops 72-86 pips), confirming the switch to the A$1,000 paper account; on A$1,000
+the baseline keeps roughly the same result (+0.021 R and +0.067 R). Note: with drawdowns of about
+16-17 R, the configured 2-5% risk per trade implies account drawdowns of roughly 30-60%.
+Next research direction (to be pre-registered): J4-a slow time-series momentum (1-12 month trend),
+the idea with the strongest external evidence.

@@ -372,7 +372,7 @@ breakeven rule helped here: it turned the USDJPY long into a scratch instead of 
 | Let winners run with a trailing stop | Entry 3 (claim 6), Entry 6 (1.5R cap took ~12% of the move) | 3x ATR trail: passed 2012-2018 and 2021-2025 but FAILED the final year. 20-MA trail untested (J3-f). |
 | Overbought/oversold mean reversion alone does not work | Entry 3 (claim 7), Entry 5 (5.1, 5.3 baselines), Entry 6 (USDJPY rally labelled RANGE) | Agrees with our data: range setups lost in every year. |
 | Complex models (fuzzy logic, neural networks, reinforcement learning) don't rescue weak signals | Entry 5 (5.1-5.3) | No properly tested case showed an edge; the neural network lost to buy and hold. Not planned. |
-| Trend detection is late; the volatility block removes strong trend hours | Entry 6 | Seen in Sep 2026 replay; untested: J6-a, J6-b. |
+| Trend detection is late; the volatility block removes strong trend hours | Entry 6 | Tested 2026-10-01 on 13 years: J6-a (volatility block off) and J6-b (faster detection) both FAILED - neither beat current rules in both 2012-2018 and 2021-2025. |
 | Beat a simple baseline before calling it an edge | Entry 5 (5.3) | Not yet reported in our tests: J5-b. |
 
 ## Suggested first test batch (to agree before running)
