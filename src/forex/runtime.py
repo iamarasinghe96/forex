@@ -90,6 +90,8 @@ class PaperRuntime:
         self.entry_blocks: set[str] = set()
         # Latest H1 ATR per symbol for the optional paper trailing stop (paper.atr_trailing_multiple).
         self.trailing_atr: dict[str, Decimal] = {}
+        # When each pair's quote went quiet (e.g. the daily rollover); entries pause meanwhile.
+        self.stale_since: dict[str, datetime] = {}
         self.last_health_journal: tuple[datetime, str] | None = None
         # (error type, failing since, last reported or None, consecutive failed cycles)
         self.failure: tuple[str, datetime, datetime | None, int] | None = None
@@ -99,6 +101,20 @@ class PaperRuntime:
             source.update(str(path.relative_to(Path(__file__).parent)).encode())
             source.update(path.read_bytes())
         self.code_fingerprint = source.hexdigest()
+
+    def track_stale_quotes(self, now: datetime) -> set[str]:
+        stale = {symbol for symbol in self.config.broker.symbols if not self.paper.quote_fresh(symbol, now)}
+        for symbol in set(self.stale_since) - stale:
+            del self.stale_since[symbol]
+        for symbol in sorted(stale):
+            since = self.stale_since.setdefault(symbol, now)
+            if since == now:
+                logging.getLogger("forex.paper").info("%s quote paused (quiet market or rollover); entries wait for fresh prices", symbol)
+            minutes = (now - since).total_seconds() / 60
+            if minutes * 60 > self.config.paper.stale_quote_alert_seconds:
+                raise OperatorError(f"No fresh {symbol} quote for {minutes:.0f} min. Normal while the "
+                                    "market is closed; otherwise check MT5 is connected.")
+        return stale
 
     def session_id(self, now: datetime) -> str:
         return paper_session_id(now, self.config.execution)
@@ -111,9 +127,11 @@ class PaperRuntime:
         live_account = self.feed.account_state()
         if live_account.login != self.paper.account.login or live_account.currency != "AUD":
             raise OperatorError("Market-data account identity changed. Halt paper and inspect MT5.")
-        # Check feed freshness even when flat or between hourly analysis passes.
+        # Check feed freshness even when flat or between hourly analysis passes. A pair that has
+        # not ticked recently only pauses its own entries; a long silence is reported as an error.
+        stale = self.track_stale_quotes(now)
         blocked = {symbol for symbol in self.config.broker.symbols
-                   if not self.paper.snapshot(symbol, now).entries_allowed}
+                   if symbol not in stale and not self.paper.snapshot(symbol, now).entries_allowed}
         for symbol in blocked - self.entry_blocks:
             self.emit("alert", "market:" + symbol + now.isoformat(),
                       {"symbol": symbol, "reason": "Market entry permission blocked (close-only, disabled or restricted mode)"}, now)
@@ -141,6 +159,9 @@ class PaperRuntime:
             self.heartbeat(now, "RUNNING")
             return
         for symbol in self.config.broker.symbols:
+            if symbol in stale:
+                logging.getLogger("forex.paper").info("%s quote is quiet; skipping this hour's evaluation for it", symbol)
+                continue
             bars = {}
             for timeframe in Timeframe:
                 recent = closed_candles(self.feed.candles(symbol, timeframe,

@@ -362,3 +362,45 @@ def test_optional_atr_trailing_stop_starts_after_one_r(tmp_path: Path) -> None:
     feed.tick.return_value = Tick("EURUSD", Decimal("1.109"), Decimal("1.1091"), NOW)
     paper.manage(NOW, atr_by_symbol=atr, atr_multiple=Decimal(2))
     assert paper.positions()[0].stop == Decimal("1.107")  # Never loosens.
+
+
+def test_quiet_quote_pauses_entries_and_exits_without_failing(tmp_path: Path) -> None:
+    paper, feed = setup(tmp_path)
+    paper.submit(intent())
+    # No tick for 60 s (e.g. the 17:00 New York rollover) with the price past the target.
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.12"), Decimal("1.1201"), NOW - timedelta(seconds=60))
+    assert not paper.quote_fresh("EURUSD", NOW)
+    assert paper.snapshot("EURUSD", NOW).entries_allowed is False
+    assert paper.state(NOW).equity > Decimal(10000)  # Valued at the last valid price.
+    paper.manage(NOW)
+    assert len(paper.positions()) == 1  # Not closed on an old price; re-checked next cycle.
+    with pytest.raises(OperatorError, match="stale"):
+        paper.manage(NOW, flatten=True)
+
+
+def test_runtime_rides_out_quiet_quotes_and_reports_long_silence(tmp_path: Path) -> None:
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.runtime import PaperRuntime
+
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.broker.symbols = ["EURUSD"]
+    config.context.enabled = False
+    config.execution.session_rollover = None
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    clock = [NOW]
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)),
+                           lambda: clock[0])
+    runtime.next_analysis = NOW + timedelta(hours=1)
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), NOW - timedelta(seconds=60))
+    runtime.cycle()  # Quiet for a minute: no failure and no market-permission alert.
+    assert not [e for e in runtime.journal.events() if e.kind == "alert"]
+    clock[0] = NOW + timedelta(seconds=config.paper.stale_quote_alert_seconds + 1)
+    with pytest.raises(OperatorError, match="No fresh EURUSD quote"):
+        runtime.cycle()
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), clock[0])
+    runtime.cycle()
+    assert not runtime.stale_since

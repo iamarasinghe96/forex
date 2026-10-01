@@ -35,7 +35,9 @@ market_data:
 # Layer 3 research starting points. Every value is UNVALIDATED and versioned for Layer 4 testing.
 analysis:
   strategy_version: layer3-v1
-  parameter_version: trend-only-v1   # Operator-approved 2026-09-30: range setups disabled after OOS research.
+  # Operator-chosen aggressive PAPER profile 2026-10-01 (J6-a/J6-b failed the pre-registered
+  # 13-year test; operator accepts the risk on paper). Previous: trend-only-v1.
+  parameter_version: operator-aggressive-v1
   ema_fast: 20
   ema_slow: 50
   ema_context: 200
@@ -56,8 +58,8 @@ analysis:
   # Range mean-reversion lost in every OOS year (research_summary.py); trend setups only.
   allowed_setups: [TREND_CONTINUATION_BREAKOUT_PULLBACK]
   # Journal J6 switches (UNTESTED; defaults keep current behaviour):
-  high_volatility_blocks_trend: true   # J6-a: false = strong trends still trade in top-decile volatility.
-  trend_efficiency_window: null        # J6-b: e.g. 10 H4 bars for faster trend detection (null = 20).
+  high_volatility_blocks_trend: false  # J6-a ON: strong trends still trade in top-decile volatility.
+  trend_efficiency_window: 10          # J6-b ON: faster trend detection (null = 20 H4 bars).
 
 # Layer 4 research-only assumptions. They never alter strategy parameters or place orders.
 backtest:
@@ -100,11 +102,11 @@ risk:
   minimum_reward_risk: 1.5
   max_concurrent_positions: 4
   max_simultaneous_risk_percent: 20
-  daily_loss_percent: 12
+  daily_loss_percent: 25   # Aggressive paper profile (was 12).
   tax_reserve_percent: 32.5
   # At 5% risk, 8 consecutive full-risk losses compound to about a 33.7% drawdown.
-  conviction_risk_percent: {low: 2.0, medium: 3.5, high: 5.0}
-  conviction_thresholds: {minimum: 55, medium: 70, high: 85}  # UNVALIDATED operator policy.
+  conviction_risk_percent: {low: 5.0, medium: 5.0, high: 5.0}   # Aggressive paper profile (was 2/3.5/5).
+  conviction_thresholds: {minimum: 0, medium: 70, high: 85}  # Minimum 0 = no confidence floor (was 55).
   target_trades_per_week: {minimum: 3, maximum: 8}
 
 # Layer 7 operational defaults (UNVALIDATED). No command enables broker execution.
@@ -143,5 +145,5 @@ paper:
   no_trade_hours: 168
   # Journal J6-c exits (UNTESTED; paper only). Use a target above 1.5 so small price moves during
   # review cannot push the reward below the 1.5R minimum.
-  target_reward_risk: null      # e.g. 3.0 (null = the 1.5R minimum target).
-  atr_trailing_multiple: null   # e.g. 3.0 = trail 3x H1 ATR behind price once a trade is +1R.
+  target_reward_risk: 10.0      # Let winners run: far target, the trailing stop exits (null = 1.5R).
+  atr_trailing_multiple: 3.0    # Trail 3x H1 ATR behind price once a trade is +1R (null = off).

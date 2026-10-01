@@ -539,3 +539,20 @@ the baseline keeps roughly the same result (+0.021 R and +0.067 R). Note: with d
 16-17 R, the configured 2-5% risk per trade implies account drawdowns of roughly 30-60%.
 Next research direction (to be pre-registered): J4-a slow time-series momentum (1-12 month trend),
 the idea with the strongest external evidence.
+
+### Operator-chosen aggressive paper profile and quiet-quote fix (2026-10-01)
+
+Operator decision, PAPER only (real-money and demo execution stay disabled): parameter_version
+operator-aggressive-v1 on the fresh A$1,000 paper account. J6-a on (volatility block off), J6-b on
+(trend_efficiency_window 10), no confidence floor (conviction minimum 0), 5% risk on every trade,
+daily loss circuit 25%, target 10R with a 3 x H1 ATR trailing stop after +1R. Kept: trend setups
+only (range setups lost in every tested year), setup-strength threshold, AI news review, 20% total
+open-risk cap. This profile is NOT validated: J6-a/J6-b failed pre-registration 3, the trailing
+exit failed the final holdout, and the 2025-26 scan showed relaxed limits losing on that year. The
+operator accepts the risk on paper to observe live behaviour; results will be judged as exploration.
+
+Fix: Telegram/console "Paper quote is stale or invalid" errors came from a single pair not ticking
+for 30 s (e.g. the 17:00 New York rollover), which failed the whole cycle. Now a quiet pair only
+pauses its own entries and stop checks (valuation uses its last valid price); the cycle fails only
+if a pair has no fresh quote for paper.stale_quote_alert_seconds (900 s), which still reports
+weekend closures once and then hourly. Future-dated quotes still fail (clock fault).

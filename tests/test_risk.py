@@ -101,9 +101,14 @@ def test_available_context_is_graded_not_unanimity() -> None:
         risk_tier(D("101"), POLICY)
 
 
+# The operator's aggressive paper profile in config.yaml (2026-10-01); POLICY stays the fixture.
+OPERATOR_POLICY = replace(POLICY, daily_loss_limit=D(".25"), minimum_conviction=D("0"),
+                          low_risk_percent=D(".05"), medium_risk_percent=D(".05"))
+
+
 def test_config_is_exact_policy_source_and_changed_policy_changes_calculation() -> None:
     configured = policy_from_config(load_config(Path("config.yaml")).risk)
-    assert configured == POLICY
+    assert configured == OPERATOR_POLICY
     changed = RiskPolicy(20, D("2"), 2, D(".10"), D(".05"),
                          D("60"), D("75"), D("90"), D(".01"), D(".02"), D(".03"))
     assert risk_tier(D("55"), changed).risk_percent is None
@@ -136,20 +141,20 @@ def test_policy_id_is_content_addressed_and_covers_material_policy_values() -> N
 
 def test_config_policy_values_and_decision_identity_remain_exact_and_traceable() -> None:
     configured = policy_from_config(load_config(Path("config.yaml")).risk)
-    assert configured == POLICY
+    assert configured == OPERATOR_POLICY
     assert (configured.minimum_conviction, configured.medium_conviction,
-            configured.high_conviction) == (D("55"), D("70"), D("85"))
+            configured.high_conviction) == (D("0"), D("70"), D("85"))
     assert (configured.low_risk_percent, configured.medium_risk_percent,
-            configured.high_risk_percent) == (D(".02"), D(".035"), D(".05"))
+            configured.high_risk_percent) == (D(".05"), D(".05"), D(".05"))
     assert configured.minimum_reward_risk == D("1.5")
     assert configured.max_concurrent_positions == 4
     assert configured.max_simultaneous_risk == D(".20")
-    assert configured.daily_loss_limit == D(".12")
+    assert configured.daily_loss_limit == D(".25")
     assert configured.max_leverage == 30
 
     first = decision()
     second = decision()
-    assert first.risk_policy_id == configured.policy_id
+    assert first.risk_policy_id == POLICY.policy_id
     assert first.risk_policy_implementation_version == RISK_POLICY_IMPLEMENTATION_VERSION
     assert first.decision_id == second.decision_id
 

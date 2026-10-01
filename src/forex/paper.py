@@ -53,14 +53,26 @@ class PaperBroker:
             if row != (account.login, account.currency):
                 raise OperatorError("Paper database belongs to another account. Use a separate paper database.")
 
-    def _quote(self, symbol: str, now: datetime) -> Tick:
+    def _tick(self, symbol: str, now: datetime) -> tuple[Tick, bool]:
+        """Latest valid quote and whether it is fresh enough to trade on."""
         _require_utc(now, "now")
         tick = self.feed.tick(symbol)
-        if (not tick.bid.is_finite() or not tick.ask.is_finite() or
-                not 0 < tick.bid <= tick.ask or
-                not -QUOTE_FUTURE_TOLERANCE_SECONDS <= (now - tick.time_utc).total_seconds() <= self.quote_age):
+        if not tick.bid.is_finite() or not tick.ask.is_finite() or not 0 < tick.bid <= tick.ask:
+            raise OperatorError("Paper quote is invalid. Halt entries and restore market data.")
+        age = (now - tick.time_utc).total_seconds()
+        if age < -QUOTE_FUTURE_TOLERANCE_SECONDS:  # Future-dated: a clock fault, not a quiet market.
+            raise OperatorError("Paper quote is stale or invalid (future-dated). Check the VPS and MT5 clocks.")
+        return tick, age <= self.quote_age
+
+    def _quote(self, symbol: str, now: datetime) -> Tick:
+        tick, fresh = self._tick(symbol, now)
+        if not fresh:
             raise OperatorError("Paper quote is stale or invalid. Halt entries and restore market data.")
         return tick
+
+    def quote_fresh(self, symbol: str, now: datetime) -> bool:
+        """False while a pair has not ticked recently (e.g. the 17:00 New York rollover)."""
+        return self._tick(self.feed.resolve_symbol(symbol).broker_name, now)[1]
 
     def positions(self) -> tuple[BrokerPosition, ...]:
         with closing(sqlite3.connect(self.path)) as db, db:
@@ -86,14 +98,14 @@ class PaperBroker:
         balance = Decimal(row[0])
         unrealized = Decimal(0)
         for p in self.positions():
-            tick = self._quote(p.symbol, now)
+            tick = self._tick(p.symbol, now)[0]  # Last valid price; quiet markets do not stop valuation.
             unrealized += self._pnl(p, tick.bid if p.side is Side.LONG else tick.ask)
         return replace(self.account, balance=balance, equity=balance + unrealized)
 
     def position_status(self, now: datetime) -> tuple[dict[str, Any], ...]:
         result = []
         for position in self.positions():
-            tick = self._quote(position.symbol, now)
+            tick = self._tick(position.symbol, now)[0]
             price = tick.bid if position.side is Side.LONG else tick.ask
             result.append({**json.loads(canonical_json(position)), "market_price": str(price),
                            "unrealized_pnl_aud": str(self._pnl(position, price)),
@@ -102,8 +114,10 @@ class PaperBroker:
 
     def snapshot(self, symbol: str, now: datetime) -> ExecutionSnapshot:
         spec = self.feed.resolve_symbol(symbol)
-        return ExecutionSnapshot(self.state(now), spec, self._quote(spec.broker_name, now),
-                                 self.positions(), True, self.feed.market_allows_entries(spec.broker_name), now)
+        tick, fresh = self._tick(spec.broker_name, now)
+        # A momentarily old quote blocks entries for this pair instead of failing the whole cycle.
+        return ExecutionSnapshot(self.state(now), spec, tick, self.positions(), True,
+                                 fresh and self.feed.market_allows_entries(spec.broker_name), now)
 
     def submit(self, intent: OrderIntent) -> SubmissionResult:
         if not self.feed.market_allows_entries(intent.symbol):
@@ -156,7 +170,11 @@ class PaperBroker:
                atr_by_symbol: dict[str, Decimal] | None = None,
                atr_multiple: Decimal | None = None) -> None:
         for p in self.positions():
-            tick = self._quote(p.symbol, now)
+            tick, fresh = self._tick(p.symbol, now)
+            if not fresh:
+                if flatten:
+                    raise OperatorError("Paper quote is stale or invalid. Halt entries and restore market data.")
+                continue  # Re-checked next cycle; stops are not judged on an old price.
             price = tick.bid if p.side is Side.LONG else tick.ask
             stop_hit = price <= p.stop if p.side is Side.LONG else price >= p.stop
             target_hit = price >= p.target if p.side is Side.LONG else price <= p.target
