@@ -1,7 +1,7 @@
 """Scan which protective layers cost trades, over stored candles (read-only, exploratory).
 
 Usage: python scripts/scan_protections.py --since 2025-11-01 [--until 2026-10-01]
-       [--db data/paper.sqlite3] [--config config.yaml] [--balance 100] [--audusd 0.66]
+       [--db <paper database>] [--config config.yaml] [--balance 100] [--audusd 0.66]
 
 Replays the bot's hourly analysis with one protective layer removed at a time, then simulates
 one position per pair with the live exit rules. Compares each variant with the current rules:
@@ -169,7 +169,7 @@ def simulate(symbol: str, hours: list[Hour], variant: tuple, thresholds: dict[st
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--db", type=Path, default=Path("data/paper.sqlite3"))
+    parser.add_argument("--db", type=Path, default=None, help="Default: paper.database in the config")
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--since", required=True, help="UTC date; the first ~40 days of stored history are warm-up")
     parser.add_argument("--until", default=None, help="UTC date (exclusive); default now")
@@ -180,6 +180,7 @@ def main() -> int:
     if missing:
         raise SystemExit("This scan needs the J6 strategy code (commit 2ded460 or later) on PYTHONPATH.")
     config = load_config(args.config)
+    args.db = args.db or config.paper.database
     balance = args.balance or config.paper.starting_balance_aud or 100.0
     since = datetime.fromisoformat(args.since).replace(tzinfo=UTC)
     until = datetime.fromisoformat(args.until).replace(tzinfo=UTC) if args.until else datetime.now(UTC)

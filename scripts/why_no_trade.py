@@ -1,6 +1,6 @@
 """Explain what the paper bot decided over a period, per symbol (read-only).
 
-Usage: python scripts/why_no_trade.py --since 2026-09-09 [--until 2026-10-01] [--db data/paper.sqlite3]
+Usage: python scripts/why_no_trade.py --since 2026-09-09 [--until 2026-10-01] [--db data/paper-a1000.sqlite3]
 
 Answers "the chart trended - why didn't the bot trade?" from the bot's own journal: how the H4
 regime was labelled each hour, why each no-trade happened, and what became of each candidate.
@@ -34,10 +34,13 @@ def outcome(kind: str, payload: dict) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--db", type=Path, default=Path("data/paper.sqlite3"))
+    parser.add_argument("--db", type=Path, default=None, help="Default: paper.database in config.yaml")
     parser.add_argument("--since", required=True, help="UTC date, e.g. 2026-09-09")
     parser.add_argument("--until", default="9999", help="UTC date (exclusive)")
     args = parser.parse_args()
+    if args.db is None:
+        import yaml
+        args.db = Path(yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))["paper"]["database"])
     if not args.db.exists():
         raise SystemExit(f"Journal not found: {args.db}")
     db = sqlite3.connect(f"file:{args.db.resolve().as_posix()}?mode=ro", uri=True)

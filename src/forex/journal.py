@@ -131,6 +131,9 @@ class JournalStore:
                     summary["health_at_utc"] = observed_at_utc.isoformat()
                 summary["last_event_at_utc"] = max(summary.get("last_event_at_utc", ""),
                                                     observed_at_utc.isoformat())
+                # Lets the dashboard ignore trades mirrored from an earlier paper account.
+                summary["first_event_at_utc"] = min(summary.get("first_event_at_utc") or "9999",
+                                                     observed_at_utc.isoformat())
                 db.execute("INSERT INTO journal_summaries VALUES (?,?,?) ON CONFLICT(mode,bucket) "
                            "DO UPDATE SET summary_json=excluded.summary_json",
                            (mode, bucket, canonical_json(summary)))

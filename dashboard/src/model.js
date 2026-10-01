@@ -42,7 +42,9 @@ export const PERIODS=[['1','Last 24 hours'],['7','Last 7 days'],['14','Last 2 we
 export function periodStart(period,now=Date.now()){return period==='all'?null:now-Number(period)*86400000;}
 const closedAt=e=>Date.parse(e.payload?.closed_at_utc??e.observed_at_utc);
 export function simpleSummary(trades,summary,period,now=Date.now()){
-  const start=periodStart(period,now);
+  const period0=periodStart(period,now),accountStart=Date.parse(summary?.first_event_at_utc??'');
+  // Trades mirrored from an earlier paper account (before this journal began) are not counted.
+  const start=Number.isFinite(accountStart)?Math.max(period0??accountStart,accountStart):period0;
   const closed=trades.filter(e=>e.kind==='trade_closed'&&numeric(e.payload?.pnl_aud)!==null&&Number.isFinite(closedAt(e))&&closedAt(e)<=now&&(start===null||closedAt(e)>=start)).sort((a,b)=>closedAt(a)-closedAt(b));
   const pnl=closed.map(e=>Number(e.payload.pnl_aud)),profit=pnl.reduce((a,b)=>a+b,0);
   const balance=numeric(summary?.latest_balance),allTime=numeric(summary?.realized_pnl_aud)??0;

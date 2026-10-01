@@ -16,7 +16,7 @@ if (Test-Path -LiteralPath $python) {
     & $python --version
     & $python -c 'import importlib.metadata as m; names=["forex-operator","MetaTrader5","firebase-admin","tzdata"]; installed={d.metadata["Name"].lower():d.version for d in m.distributions()}; print({n:installed.get(n.lower(),"MISSING") for n in names})'
 } else { Write-Output 'Project virtual environment: missing' }
-foreach ($relative in @('.env', 'config.yaml', '.secrets\firebase-admin.json', 'data\paper.sqlite3', 'data\HALT_PAPER')) {
+foreach ($relative in @('.env', 'config.yaml', '.secrets\firebase-admin.json', 'data\paper.sqlite3', 'data\paper-a1000.sqlite3', 'data\HALT_PAPER')) {
     Write-Output "$relative exists: $(Test-Path -LiteralPath (Join-Path $root $relative))"
 }
 $terminals = @(Get-Process terminal64 -ErrorAction SilentlyContinue)

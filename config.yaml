@@ -129,8 +129,10 @@ cloud:
 # Layer 10 stays disabled until explicit paper setup; never places MT5 orders.
 paper:
   enabled: true   # Operator-approved 2026-09-30 supervised PAPER run; never sends MT5 orders.
-  database: data/paper.sqlite3
-  starting_balance_aud: 100
+  # Fresh A$1,000 paper account from 2026-10-01 so the 0.01-lot minimum fits the 2-5% risk budget
+  # (on A$100 most stops did not fit). The A$100 history stays in data/paper.sqlite3.
+  database: data/paper-a1000.sqlite3
+  starting_balance_aud: 1000
   poll_seconds: 5
   history_days: 365
   heartbeat_file: data/paper-heartbeat.json

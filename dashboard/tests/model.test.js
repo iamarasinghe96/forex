@@ -28,3 +28,10 @@ test('bot state is running only with a recent heartbeat',()=>{
   assert.equal(botState({health_at_utc:'2026-10-10T00:00:00+00:00'},now).running,false);
   assert.equal(botState({},now).running,false);
 });
+test('trades from an earlier paper account are not counted after a fresh start',()=>{
+  const now=Date.parse('2026-10-10T00:00:00Z');
+  const trades=[closed('-3.3','2026-09-30T03:00:00+00:00'),closed('12','2026-10-05T00:00:00+00:00')];
+  const s=simpleSummary(trades,{latest_balance:'1012',realized_pnl_aud:'12',first_event_at_utc:'2026-10-01T10:00:00+00:00'},'all',now);
+  assert.equal(s.invested,1000);assert.equal(s.trades,1);assert.equal(s.profit,12);assert.equal(s.lost,0);
+  assert.equal(simpleSummary(trades,{latest_balance:'1012',realized_pnl_aud:'12',first_event_at_utc:'2026-10-01T10:00:00+00:00'},'7',now).trades,1);
+});

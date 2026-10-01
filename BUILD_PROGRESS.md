@@ -509,3 +509,12 @@ exit (1.5R target, break-even 1R), on 2012-2018 (--start-utc 2012-04-01, dukasco
 average R is above the baseline trend55 result on the same period (existing exports
 trades-2012-2018.csv and oos-trades.csv). Window length 10 is fixed in advance; no other values
 will be tried before the verdict. The account-size lines (A$100 / A$1,000) are information only.
+
+### Fresh A$1,000 paper account (operator decision, 2026-10-01)
+
+Operator chose option (a) until the J6 13-year results arrive: paper.database is now
+data/paper-a1000.sqlite3 with starting_balance_aud 1000, so the 0.01-lot minimum fits the 2-5%
+risk budget (stops up to roughly 130 pips at 2%). Strategy settings unchanged (trend-only, J6
+switches off). The A$100 journal stays in data/paper.sqlite3. Journal summaries now carry
+first_event_at_utc and the dashboard ignores closed trades mirrored before it, so the earlier
+A$100 trade is not mixed into the new account's results. Real-money and demo execution stay disabled.

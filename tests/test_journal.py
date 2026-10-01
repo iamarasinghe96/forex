@@ -100,6 +100,7 @@ def test_late_events_do_not_roll_back_current_balance_or_health(tmp_path: Path) 
     store.append("PAPER", "balance", "new", {"balance": "101", "equity": "102"}, NOW)
     store.append("PAPER", "balance", "old", {"balance": "99", "equity": "98"}, NOW - timedelta(days=1))
     assert store.summary("PAPER")["latest_balance"] == "101"
+    assert store.summary("PAPER")["first_event_at_utc"] == (NOW - timedelta(days=1)).isoformat()
 
 
 def test_csv_export_neutralizes_formula_identity_and_retains_full_payload(tmp_path: Path) -> None:

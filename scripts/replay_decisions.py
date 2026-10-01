@@ -1,7 +1,7 @@
 """Replay the bot's hourly analysis over stored candles and explain each day (read-only).
 
 Usage: python scripts/replay_decisions.py --since 2026-09-09 [--until 2026-10-01]
-       [--db data/paper.sqlite3] [--config config.yaml]
+       [--db <paper database>] [--config config.yaml]
 
 Uses the installed strategy code and config.yaml on the H1/H4 candles the paper bot already
 saved, so it shows what the bot would have decided on days it was not running. Opens the
@@ -59,12 +59,13 @@ class Position:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--db", type=Path, default=Path("data/paper.sqlite3"))
+    parser.add_argument("--db", type=Path, default=None, help="Default: paper.database in the config")
     parser.add_argument("--config", type=Path, default=Path("config.yaml"))
     parser.add_argument("--since", required=True, help="UTC date, e.g. 2026-09-09")
     parser.add_argument("--until", default=None, help="UTC date (exclusive); default now")
     args = parser.parse_args()
     config = load_config(args.config)
+    args.db = args.db or config.paper.database
     since = datetime.fromisoformat(args.since).replace(tzinfo=UTC)
     until = datetime.fromisoformat(args.until).replace(tzinfo=UTC) if args.until else datetime.now(UTC)
     db = sqlite3.connect(f"file:{args.db.resolve().as_posix()}?mode=ro", uri=True)
