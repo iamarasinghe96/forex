@@ -82,3 +82,45 @@ J6-b 713/-0.003 and 536/+0.091. New facts from it that we accept:
 - Conclusion unchanged: the inspected winners show averaging into losing positions and basket
   exits; high win rates coexist with large hidden floating losses. Nothing here is a copyable,
   testable entry rule.
+
+## Update 2026-10-03: research results on real Dukascopy data
+
+Run on the operator PC with `scripts/causal_replay.py` and `scripts/slow_momentum.py`.
+
+**Causal replay with 1,000 matched random-entry controls (Codex items 4 and 7)**
+
+| Period | Strategy trades / mean R / PF / total | Controls mean R/trade (total, SD) | Share of controls >= strategy (total / mean) |
+|---|---|---|---|
+| 2012-2018 | 427 / +0.0263 / 1.054 / +11.23 | -0.0687 (-34.4, 25.4) | 0.041 / 0.034 |
+| 2021-2025 | 322 / +0.0417 / 1.084 / +13.42 | -0.048 (-18.6, 22.2) | 0.070 / 0.059 |
+
+| Pair | 2012-2018 total R | 2021-2025 total R |
+|---|---|---|
+| USDJPY | +23.73 | +34.24 |
+| EURUSD | +4.51 | -12.79 |
+| GBPUSD | -17.01 | -8.04 |
+
+Years 2012-2018 (mean R): +0.122, +0.059, +0.017, +0.293, -0.130, -0.075, -0.032.
+Years 2021-2025: -0.134, +0.200, +0.196, +0.060, -0.234.
+
+Verdict:
+1. **The entry timing is better than chance.** Random entries in the same H4 direction with the
+   same stops, exits, costs and entry rate lose 0.05-0.07 R/trade (roughly the trading cost). The
+   strategy's entries add about +0.09 R/trade over them in both periods. Only 2012-2018 is clean
+   evidence (the rules were designed on 2021-2025): about a 4% chance under random timing.
+   Combined with 2021-2025 (Fisher), about 2%.
+2. **The net edge is still small.** +0.03 to +0.04 R/trade, PF 1.05-1.08. This matches every earlier
+   export. It does not clear the ~5,000-trade power bar and falls to about zero under doubled costs.
+   The edge is real-looking timing on top of a cost drag, not a large edge.
+3. **It is concentrated.** USDJPY is positive in both periods, GBPUSD negative in both, and EURUSD
+   mixed. The edge also comes and goes by year (2016-2018, 2021 and 2025 negative). Removing GBPUSD
+   would be chosen after seeing these numbers. Any pair rule must be pre-registered and tested on
+   pairs not yet examined (AUDUSD, USDCAD, USDCHF, NZDUSD, EURJPY, GBPJPY).
+4. **Codex claim 4 measured: negligible.** Causal vs walk-forward export: +0.026 vs +0.028
+   (2012-2018) and +0.042 vs +0.040 (2021-2025). Boundary censoring did not inflate results.
+
+**Slow time-series momentum (Codex item 8), EURUSD/GBPUSD/USDJPY, 2013-04 to 2026-09**
++0.70%/yr, Sharpe 0.165, max drawdown 20%; constant-long +0.66%/yr. Paired monthly difference
++0.006% (95% CI -0.31 to +0.34) -> **FAIL / inconclusive**. Under cost and financing stress -0.78%/yr.
+USDJPY dominates and 2022 alone contributed +11.2%. Three USD-correlated pairs are too few
+independent bets (gap 3 above); not adopted.

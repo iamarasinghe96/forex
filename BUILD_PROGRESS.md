@@ -616,3 +616,26 @@ learning score's n/(n+20) is labelled "evidence weight". Rebuilt research DBs on
 normalized CSVs: 2012-2018 fingerprint bed3584927bd (identical); 2019-2026 4475c2ba5eff vs original
 185c5a2aa877 (same row counts; at least one input CSV differs, likely the 13 tick-repaired EURUSD
 candles). AlphaLedger: Gold Reaper basket verified; its early shorts were >= -$1,398 floating.
+
+### Causal replay, random-entry controls and slow momentum on real data (2026-10-03)
+
+Run by the operator on the PC (read-only research DBs). Full verdict: docs/CODEX_REVIEW_FACTCHECK.md.
+
+| Period | Trades | Mean net R | PF | Total R | Random controls mean R | Controls >= strategy (total / mean) |
+|---|---|---|---|---|---|---|
+| 2012-2018 (never used for design) | 427 | +0.026 | 1.054 | +11.2 | -0.069 | 4.1% / 3.4% |
+| 2021-2025 (development data) | 322 | +0.042 | 1.084 | +13.4 | -0.048 | 7.0% / 5.9% |
+
+- Entry timing beats 1,000 matched random entries (same H4 direction, stops, exits, costs, entry
+  rate) by about +0.09 R/trade in both periods. Fisher-combined share ~2%; the clean evidence is
+  2012-2018 alone (~4%).
+- The net edge stays small (+0.03 to +0.04 R/trade), inside the bootstrap noise of a 5,000-trade
+  power requirement and close to zero under doubled costs.
+- Pair concentration: USDJPY +23.7 / +34.2 R, EURUSD +4.5 / -12.8 R, GBPUSD -17.0 / -8.0 R
+  (2012-2018 / 2021-2025). Dropping GBPUSD now would be selected on these results; it must be
+  pre-registered and tested on data not yet examined (other pairs).
+- Window-boundary censoring (Codex claim 4) is negligible: causal +0.026 vs walk-forward +0.028
+  (2012-2018); +0.042 vs +0.040 (2021-2025).
+- Slow 3-pair momentum (2013-04 to 2026-09): +0.70%/yr, Sharpe 0.17, max DD 20%, versus
+  constant-long +0.66%/yr; paired difference CI [-0.31, +0.34]%/month -> FAIL; -0.78%/yr under
+  cost/financing stress. Not adopted.
