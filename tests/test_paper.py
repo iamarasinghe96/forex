@@ -404,3 +404,34 @@ def test_runtime_rides_out_quiet_quotes_and_reports_long_silence(tmp_path: Path)
     feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), clock[0])
     runtime.cycle()
     assert not runtime.stale_since
+
+
+def test_weekend_close_sends_one_notice_instead_of_hourly_errors(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from forex.config import load_config
+    from forex.context import ContextReviewer, ContextStore
+    from forex.runtime import PaperRuntime, weekend_close_start
+
+    friday_close = datetime(2026, 10, 2, 21, 0, tzinfo=UTC)  # Fri 17:00 New York (EDT).
+    assert weekend_close_start(friday_close - timedelta(minutes=1)) is None
+    assert weekend_close_start(friday_close + timedelta(hours=30)) == friday_close
+    assert weekend_close_start(datetime(2026, 10, 4, 21, 1, tzinfo=UTC)) is None  # Reopened Sunday.
+    paper, feed = setup(tmp_path)
+    config = load_config(Path("config.yaml"))
+    config.broker.symbols = ["EURUSD"]
+    config.context.enabled = False
+    config.execution.session_rollover = None
+    config.execution.session_rollover_hour_utc = 0
+    config.paper.heartbeat_file = tmp_path / "heartbeat.json"
+    config.paper.halt_file = tmp_path / "HALT"
+    clock = [friday_close + timedelta(minutes=5)]
+    runtime = PaperRuntime(config, feed, paper, ContextReviewer(config.context, Mock(), ContextStore(paper.path)),
+                           lambda: clock[0])
+    runtime.next_analysis = clock[0] + timedelta(days=3)
+    feed.tick.return_value = Tick("EURUSD", Decimal("1.0999"), Decimal("1.1"), friday_close - timedelta(minutes=2))
+    for hours in (0, 1, 20, 40):
+        clock[0] = friday_close + timedelta(minutes=5, hours=hours)
+        runtime.cycle()  # Never raises over the weekend.
+    alerts = [e for e in runtime.journal.events(limit=500) if e.kind == "alert"]
+    assert len(alerts) == 1 and "weekend" in alerts[0].payload["reason"]

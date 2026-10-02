@@ -81,6 +81,17 @@ class RuntimeStore:
                        (now.isoformat(), identity))
 
 
+def weekend_close_start(now: datetime) -> datetime | None:
+    """Start of the weekly forex close (Fri 17:00 New York) if ``now`` falls inside it, else None."""
+    ny = now.astimezone(ZoneInfo("America/New_York"))
+    inside = ((ny.weekday() == 4 and ny.hour >= 17) or ny.weekday() == 5
+              or (ny.weekday() == 6 and ny.hour < 17))
+    if not inside:
+        return None
+    friday = (ny - timedelta(days=(ny.weekday() - 4) % 7)).replace(hour=17, minute=0, second=0, microsecond=0)
+    return friday.astimezone(UTC)
+
+
 class PaperRuntime:
     def __init__(self, config: AppConfig, feed: Broker, paper: PaperBroker,
                  reviewer: ContextReviewer, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
@@ -177,6 +188,13 @@ class PaperRuntime:
             if since == now:
                 logging.getLogger("forex.paper").info("%s quote paused (quiet market or rollover); entries wait for fresh prices", symbol)
             minutes = (now - since).total_seconds() / 60
+            closed_from = weekend_close_start(now)
+            if closed_from is not None:
+                # Weekly close (Fri 17:00 to Sun 17:00 New York): one notice per weekend, no errors.
+                self.emit("alert", "weekend-close:" + closed_from.date().isoformat(),
+                          {"reason": "Market closed for the weekend; the bot is idle until it reopens "
+                           "Sunday 17:00 New York time (Monday morning in Sydney). No action needed."}, now)
+                continue
             if minutes * 60 > self.config.paper.stale_quote_alert_seconds:
                 raise OperatorError(f"No fresh {symbol} quote for {minutes:.0f} min. Normal while the "
                                     "market is closed; otherwise check MT5 is connected.")
