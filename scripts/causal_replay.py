@@ -56,16 +56,16 @@ def pip(symbol: str) -> float:
 
 
 def analyse_pair(job: tuple[str, str, str, str, str, str, float]) -> tuple[str, list[Hour]]:
+    from research_db import load_candles
+
     from forex.analysis import InsufficientDataError, analyse_market, prepare_candles
     from forex.config import AnalysisConfig
     from forex.domain import Timeframe
-    from forex.persistence import CandleStore
 
     symbol, database, config_json, start, end, _, min_conviction = job
     config = AnalysisConfig.model_validate_json(config_json)
-    store = CandleStore(Path(database))
-    h1 = store.load(symbol, Timeframe.H1)
-    p1, p4 = prepare_candles(h1, config), prepare_candles(store.load(symbol, Timeframe.H4), config)
+    h1 = load_candles(database, symbol, Timeframe.H1)
+    p1, p4 = prepare_candles(h1, config), prepare_candles(load_candles(database, symbol, Timeframe.H4), config)
     first, last = datetime.fromisoformat(start).replace(tzinfo=UTC), datetime.fromisoformat(end).replace(tzinfo=UTC)
     hours: list[Hour] = []
     for candle in h1:
@@ -179,9 +179,15 @@ def main() -> int:
     symbols = [s.upper() for s in config.broker.symbols]
     jobs = [(s, args.research_database, analysis.model_dump_json(), args.start, args.end, "", args.min_conviction)
             for s in symbols]
+    from research_db import require_data
+    require_data(args.research_database, symbols)
     print(f"Replaying {symbols} from {args.start} ({args.profile} analysis); this takes a while...", flush=True)
     with ProcessPoolExecutor(max_workers=len(jobs)) as pool:
         streams = dict(pool.map(analyse_pair, jobs))
+    for s in symbols:
+        print(f"  {s}: {len(streams[s])} hours analysed, {sum(h.signal for h in streams[s])} signal hours", flush=True)
+        if not streams[s]:
+            raise SystemExit(f"No {s} hours in {args.start}..{args.end}; check the dates and the database.")
     exits = {s: outcomes(s, streams[s], args.target_r, args.breakeven_r, args.trail_atr,
                          args.horizon_bars, args.cost_scale) for s in symbols}
 

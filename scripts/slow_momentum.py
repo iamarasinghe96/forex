@@ -27,19 +27,21 @@ import random
 import statistics
 from collections import defaultdict
 from datetime import date
-from pathlib import Path
 
 COST_PIPS = {"EURUSD": 0.9, "GBPUSD": 1.2, "USDJPY": 1.0}
 TARGET_VOL, LOOKBACKS = 0.10, (3, 6, 12)
 
 
 def daily_closes(databases: list[str], symbol: str) -> dict[date, float]:
+    from research_db import load_candles
+
     from forex.domain import Timeframe
-    from forex.persistence import CandleStore
 
     closes: dict[date, tuple[str, float]] = {}
     for database in databases:
-        for candle in CandleStore(Path(database)).load(symbol, Timeframe.H1):
+        candles = load_candles(database, symbol, Timeframe.H1)
+        print(f"  {symbol} {database}: {len(candles)} H1 rows", flush=True)
+        for candle in candles:
             day = candle.timestamp_utc.date()
             if day.weekday() >= 5:
                 continue
@@ -159,6 +161,10 @@ def main() -> int:
     args = parser.parse_args()
     symbols = [s.strip().upper() for s in args.symbols.split(",")]
     prices = {s: daily_closes(args.research_database, s) for s in symbols}
+    for s, p in prices.items():
+        if not p:
+            raise SystemExit(f"No {s} prices loaded; check the database paths.")
+        print(f"  {s}: {len(p)} daily closes {min(p)} .. {max(p)}", flush=True)
     results = {}
     for mode in ("momentum", "long"):
         days, rets, contribution = simulate(prices, mode, args.cost_scale, args.financing_debit)
