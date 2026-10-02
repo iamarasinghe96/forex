@@ -210,7 +210,7 @@ class PaperRuntime:
         self.sessions.observe_equity(self.session_id(now), before.balance, before.equity,
                                      self.policy, now)
         trail = self.config.paper.atr_trailing_multiple
-        if trail is not None:
+        if trail is not None and not self.config.paper.halt_file.exists():  # A halt only flattens.
             self.refresh_position_atr(now)
         self.paper.manage(now, atr_by_symbol=self.trailing_atr,
                           atr_multiple=Decimal(str(trail)) if trail is not None else None)
