@@ -587,3 +587,16 @@ scans always assumed one position per pair, and the old confidence floor had hid
 Added paper.max_positions_per_pair (default and config 1): further signals on a held pair are
 journaled as no_trade "Already holding N ...". Existing open trades are managed normally.
 Telegram daily summary now reads "Daily summary <day>: N trades closed (W won, L lost), P&L A$x".
+
+### Codex review fact-check and new research tools (2026-10-03)
+
+Codex (operator's second reviewer) produced a plan, ALPHALEDGER_REVIEW.md, RESEARCH_TEST_SPEC.md and
+draft PR #19. Fact-check in docs/CODEX_REVIEW_FACTCHECK.md: live ATR trailing never activated
+(cache key EURUSD vs position EURUSD.a) - TRUE, PR #19 fix reviewed and correct; short-trade review
+excursions wrong - TRUE (review text only); research censors trades near walk-forward window ends and
+uses a 120-bar time exit unlike live - TRUE, magnitude unmeasured; random controls and slow momentum
+never run - TRUE. Added scripts/causal_replay.py (single chronological stream, live-equivalent exits,
+1,000 matched random-entry controls) and scripts/slow_momentum.py (spec section 3 benchmark with
+flat/constant-long comparators, cost/financing stress, block bootstrap). Verified on synthetic data
+only; this session's network policy blocks datafeed.dukascopy.com and app.alphaledger.ai.
+Power note: detecting +0.03 R/trade at 2 SE (SD ~1.2 R) needs ~6,400 trades.
