@@ -76,3 +76,25 @@ def test_price_path_empty_history_has_no_excursion_facts() -> None:
 
 def test_price_path_zero_initial_risk_has_no_excursion_facts() -> None:
     assert price_path(replace(path_facts("SHORT"), initial_stop=100), path_bars()) == {}
+
+
+def test_held_pair_atr_is_refreshed_after_restart_and_when_paused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    from forex.runtime import PaperRuntime
+
+    runtime, paper, feed = runtime_fixture(tmp_path, monkeypatch)
+    runtime.config.paper.atr_trailing_multiple = 2.0
+    runtime.cycle()  # Opens the fixture trade and caches ATR from the analysis.
+    assert paper.positions()
+    # Restart: a fresh runtime has no cached ATR until it refreshes for the held pair.
+    restarted = PaperRuntime(runtime.config, feed, paper, runtime.reviewer, lambda: NOW + timedelta(seconds=5))
+    assert not restarted.trailing_atr
+    restarted.overlay_path.write_text(json.dumps({"disabled_pairs": ["EURUSD"]}))  # Analysis now skipped.
+    restarted.cycle()
+    assert restarted.trailing_atr["EURUSD"] > 0
+    calls = feed.candles.call_count
+    restarted.cycle()
+    assert feed.candles.call_count == calls  # Not refetched within the hour.

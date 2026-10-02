@@ -600,3 +600,13 @@ never run - TRUE. Added scripts/causal_replay.py (single chronological stream, l
 flat/constant-long comparators, cost/financing stress, block bootstrap). Verified on synthetic data
 only; this session's network policy blocks datafeed.dukascopy.com and app.alphaledger.ai.
 Power note: detecting +0.03 R/trade at 2 SE (SD ~1.2 R) needs ~6,400 trades.
+
+### PR #19 merged and held-pair ATR refresh (2026-10-03)
+
+Merged Codex PR #19 (operator approval): runtime caches trailing ATR under the broker symbol
+(EURUSD.a) used by paper positions, so the configured 3 x H1 ATR trail now activates after +1R;
+short-trade review excursions corrected. Added refresh_position_atr: for every held pair the 14-bar
+H1 ATR is recomputed at most hourly from closed MT5 candles when the hourly analysis did not supply
+it (restart, paused pair, quiet quote); failures keep the previous value. Deploying this tightens
+the stops of open trades that are past +1R (locks part of their open profit). No time-based exit
+exists in the live bot; the 120/480-bar time exits were research-only.

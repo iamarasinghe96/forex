@@ -17,7 +17,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from forex.alerts import TelegramAlerter
-from forex.analysis import Side, analyse_market, closed_candles
+from forex.analysis import Side, analyse_market, atr, closed_candles
 from forex.broker.base import Broker
 from forex.cloud_sync import configured_worker
 from forex.config import AppConfig, ExecutionConfig, Secrets
@@ -106,6 +106,7 @@ class PaperRuntime:
         self.entry_blocks: set[str] = set()
         # Latest H1 ATR per symbol for the optional paper trailing stop (paper.atr_trailing_multiple).
         self.trailing_atr: dict[str, Decimal] = {}
+        self.atr_updated: dict[str, datetime] = {}  # Broker symbol -> when its ATR was last computed.
         # When each pair's quote went quiet (e.g. the daily rollover); entries pause meanwhile.
         self.stale_since: dict[str, datetime] = {}
         self.last_health_journal: tuple[datetime, str] | None = None
@@ -118,6 +119,24 @@ class PaperRuntime:
             source.update(path.read_bytes())
         self.code_fingerprint = source.hexdigest()
         self.reload_strategy(self.started, announce=False)
+
+    def refresh_position_atr(self, now: datetime) -> None:
+        """Keep the trailing-stop ATR current for every held pair: after a restart, and when the
+        pair's hourly analysis is skipped (paused pair or quiet quote). Same 14-bar H1 ATR."""
+        held = {p.symbol for p in self.paper.positions()}
+        period = self.config.analysis.atr_period
+        for symbol in self.config.broker.symbols:
+            broker_symbol = self.feed.resolve_symbol(symbol).broker_name
+            updated = self.atr_updated.get(broker_symbol)
+            if broker_symbol not in held or (updated is not None and now - updated < timedelta(hours=1)):
+                continue
+            try:
+                recent = closed_candles(self.feed.candles(symbol, Timeframe.H1, now - timedelta(days=7), now), now)
+                self.trailing_atr[broker_symbol] = Decimal(str(atr(recent, period)))
+                self.atr_updated[broker_symbol] = now
+            except Exception as exc:  # noqa: BLE001 - keep the previous ATR; retry next cycle
+                logging.getLogger("forex.paper").warning("ATR refresh for %s failed (%s); previous value kept.",
+                                                         symbol, type(exc).__name__)
 
     def reload_strategy(self, now: datetime, *, announce: bool = True) -> None:
         """Load the approved strategy overlay when it changes; an invalid file keeps current settings."""
@@ -191,6 +210,8 @@ class PaperRuntime:
         self.sessions.observe_equity(self.session_id(now), before.balance, before.equity,
                                      self.policy, now)
         trail = self.config.paper.atr_trailing_multiple
+        if trail is not None:
+            self.refresh_position_atr(now)
         self.paper.manage(now, atr_by_symbol=self.trailing_atr,
                           atr_multiple=Decimal(str(trail)) if trail is not None else None)
         self.paper.journal_fills(self.journal)
@@ -224,6 +245,7 @@ class PaperRuntime:
             result = analyse_market(symbol, bars[Timeframe.H1], bars[Timeframe.H4], now, self.config.analysis)
             broker_symbol = self.feed.resolve_symbol(symbol).broker_name
             self.trailing_atr[broker_symbol] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
+            self.atr_updated[broker_symbol] = now
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue
