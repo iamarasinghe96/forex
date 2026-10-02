@@ -610,3 +610,9 @@ H1 ATR is recomputed at most hourly from closed MT5 candles when the hourly anal
 it (restart, paused pair, quiet quote); failures keep the previous value. Deploying this tightens
 the stops of open trades that are past +1R (locks part of their open profit). No time-based exit
 exists in the live bot; the 120/480-bar time exits were research-only.
+Update: Codex INDEPENDENT_TRADE_AUDIT matches all nine recorded variants exactly; measured per-trade
+SD ~1.06 R (power ~5,000 trades for +0.03 R). causal_replay now fills gapped stops at the open; the
+learning score's n/(n+20) is labelled "evidence weight". Rebuilt research DBs on the PC from the
+normalized CSVs: 2012-2018 fingerprint bed3584927bd (identical); 2019-2026 4475c2ba5eff vs original
+185c5a2aa877 (same row counts; at least one input CSV differs, likely the 13 tick-repaired EURUSD
+candles). AlphaLedger: Gold Reaper basket verified; its early shorts were >= -$1,398 floating.

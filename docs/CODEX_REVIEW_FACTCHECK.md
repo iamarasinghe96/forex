@@ -47,3 +47,38 @@ research claims checked against BUILD_PROGRESS.md; AlphaLedger figures could not
 
 Both verified on synthetic data only. Real results need the Dukascopy databases (operator PC) or
 network access to datafeed.dukascopy.com from this session.
+
+## Update 2026-10-03: Codex audit files and AlphaLedger data checked
+
+**INDEPENDENT_TRADE_AUDIT.json / EXTERNAL_REVIEW.md** - all nine recalculated variants match
+BUILD_PROGRESS exactly (trades, mean net R, PF): baseline 475/+0.028/1.063 and 361/+0.040/1.086;
+trailing 418/+0.013 and 297/+0.079; holdout 56/-0.303/0.513; J6-a 511/+0.037 and 395/+0.019;
+J6-b 713/-0.003 and 536/+0.091. New facts from it that we accept:
+- Measured per-trade SD is 1.04-1.08 R (we had assumed 1.2). Power estimate becomes
+  n = (2 x 1.06 / 0.03)^2 ~ 5,000 trades to detect +0.03 R at 2 SE.
+- Doubling assumed costs turns the 2012-2018 trailing result negative (-0.002 R); baseline stays
+  slightly positive (+0.014 / +0.024 R).
+- Block-bootstrap 95% intervals include zero for every variant except the holdout (entirely
+  negative) and J6-b 2021-2025 (positive, but J6-b lost in 2012-2018).
+- "Net mean R > 0" and "PF > 1" are the same condition on the same trades: our pass rule's two
+  criteria were redundant, not two confirmations. Correct.
+- Backtests fill stops at the stop price even through gaps (optimistic); causal_replay.py now fills
+  at the gapped bar's open.
+- The learning score's n/(n+20) is an evidence weight, not statistical confidence; renamed in the
+  bot's messages. Scores also pool trades from different settings (open item: tag by version).
+
+**ALPHALEDGER_OBSERVATIONS.json** (summaries; the raw 100-row tables were not uploaded):
+- Gold Reaper 28 Aug basket re-computed: 9 EURUSD shorts, 4.13 lots, +$48.81, displayed P&L equals
+  price change x 100,000 x lots to the cent. Verified.
+- Not computed by Codex: the first five shorts (1.24 lots, average entry 1.15453) were still open
+  when later shorts were opened at 1.16580, so the basket was at least **-$1,398 floating** at that
+  price - about 29 times its final +$48.81 profit. The true worst point is unknown (needs EURUSD
+  highs 14-28 Aug 2026; available in the Dukascopy data).
+- Leaderboard (157 rows, two page snapshots): 119 positive / 38 negative returns; median return
+  +14.8% with median max drawdown 17.5%, over unstated and differing periods. Highest returns are
+  gold/crypto systems with 25-57% drawdowns. Several providers run multiple listed strategies
+  (e.g. Gold_Xv2, Mateen, numbered "Alex" accounts), so rows are not independent. 11 rows show
+  >20% return with <10% drawdown, but no entry rules, cashflows or equity paths are available.
+- Conclusion unchanged: the inspected winners show averaging into losing positions and basket
+  exits; high win rates coexist with large hidden floating losses. Nothing here is a copyable,
+  testable entry rule.

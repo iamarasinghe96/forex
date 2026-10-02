@@ -94,7 +94,7 @@ class CommandHandler:
         worst = sorted(scores, key=lambda b: b.score_r)[:5]
         return Reply("Overall: " + scores[0].line() + "\n\nStrongest:\n" + "\n".join(b.line() for b in best)
                      + "\n\nWeakest:\n" + "\n".join(b.line() for b in worst)
-                     + f"\n\nScore = total R / (trades + {prior}), so confidence grows only with more trades.")
+                     + f"\n\nScore = total R / (trades + {prior}), evidence weight = trades / (trades + {prior}); it is not a probability of profit.")
 
     def propose(self, text: str) -> Reply:
         try:

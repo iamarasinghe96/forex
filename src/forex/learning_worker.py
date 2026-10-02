@@ -62,7 +62,7 @@ class LearningWorker:
                    f"({facts.exit_reason}, A${facts.pnl_aud:+.2f}). Why: {review.get('summary', '')} "
                    f"Lesson: {review.get('lesson', '')}"
                    + (f" Score {pair.bucket.split(':', 1)[1]}: {pair.trades} trades, {pair.score_r:+.2f} R, "
-                      f"confidence {pair.confidence:.0%}." if pair else ""))
+                      f"evidence weight {pair.confidence:.0%}." if pair else ""))
         self.journal.append("PAPER", "trade_review", trade_id,
                             {"symbol": facts.symbol, "r": facts.r, "review": review, "message": message}, now)
 

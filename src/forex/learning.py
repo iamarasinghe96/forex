@@ -144,7 +144,7 @@ class BucketScore:
     def line(self) -> str:
         return (f"{self.bucket}: {self.trades} trades, {self.wins}W/{self.losses}L, "
                 f"avg {self.total_r / self.trades if self.trades else 0:+.2f} R, "
-                f"score {self.score_r:+.2f} R, confidence {self.confidence:.0%}")
+                f"score {self.score_r:+.2f} R, evidence weight {self.confidence:.0%}")
 
 
 class LearningStore:
@@ -468,7 +468,7 @@ def review_prompt(config: AppConfig, store: LearningStore, instructions: str, no
              "## Current settings (you may change only these)", "```json",
              json.dumps(knobs(config), indent=2), "```", "",
              (f"## Scoreboard (score = total R / (trades + {config.learning.prior_trades}); "
-              "confidence = trades / (trades + prior))")]
+              "evidence weight = trades / (trades + prior), not a probability of profit)")]
     lines += [f"- {b.line()}" for b in scores] or ["- No closed trades yet."]
     lines += ["", "## Recent trades with the bot's own review (newest first)"]
     for item in store.recent_reviews(20):

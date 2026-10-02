@@ -18,6 +18,7 @@ What it does, in one chronological event stream per pair (no walk-forward window
    the timing differs, so the comparison answers "does our entry timing add value?".
 Costs: assumed round trip 0.9/1.2/1.0 pips (EURUSD/GBPUSD/USDJPY); --cost-scale 2 for stress.
 Intrabar order is unknown on H1 data: if stop and target are both touched, the stop is assumed.
+A bar that opens beyond the stop (gap) fills at that open price, as the live bot would.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ TREND = "TREND_CONTINUATION_BREAKOUT_PULLBACK"
 @dataclass
 class Hour:
     time: datetime
+    open: float
     high: float
     low: float
     close: float
@@ -87,7 +89,8 @@ def analyse_pair(job: tuple[str, str, str, str, str, str, float]) -> tuple[str, 
             direction = 1 if candidate.side.value == "LONG" else -1
             levels = candidate.structural_reference_levels
             stop = float(levels["rolling_low" if direction > 0 else "rolling_high"])
-        hours.append(Hour(candle.timestamp_utc, float(candle.high), float(candle.low), float(candle.close),
+        hours.append(Hour(candle.timestamp_utc, float(candle.open), float(candle.high), float(candle.low),
+                          float(candle.close),
                           direction, stop, float(features["h1_atr"]), signal))
     return symbol, hours
 
@@ -108,6 +111,9 @@ def outcomes(symbol: str, hours: list[Hour], target_r: float, breakeven_r: float
         for j in range(i + 1, len(hours)):
             bar = hours[j]
             adverse, favourable = (bar.low, bar.high) if sign > 0 else (bar.high, bar.low)
+            if (bar.open - stop) * sign <= 0:  # Gapped through the stop: filled at the open, not the stop.
+                exit_index, exit_price, still_open = j, bar.open, False
+                break
             if (adverse - stop) * sign <= 0:
                 exit_index, exit_price, still_open = j, stop, False
                 break
