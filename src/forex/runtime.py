@@ -22,6 +22,7 @@ from forex.broker.base import Broker
 from forex.cloud_sync import configured_worker
 from forex.config import AppConfig, ExecutionConfig, Secrets
 from forex.context import ContextReviewer
+from forex.costs import CostRecorder
 from forex.domain import Timeframe, _require_utc
 from forex.errors import OperatorError
 from forex.execution import ExecutionService, ExecutionStore
@@ -35,6 +36,7 @@ from forex.learning import (
     read_overlay,
     scale_plan,
     sizing_decision,
+    strategy_version,
 )
 from forex.market_data import validate_candle_freshness
 from forex.notifications import NotificationWorker
@@ -108,6 +110,7 @@ class PaperRuntime:
         self.sessions = RiskSessionStore(paper.path)
         self.store = RuntimeStore(paper.path)
         self.candles = CandleStore(paper.path)
+        self.costs = CostRecorder(paper.path)
         self.execution = ExecutionService(paper, ExecutionStore(paper.path), self.sessions,
                                           self.policy, config.broker.magic_number,
                                           config.execution.maximum_quote_age_seconds,
@@ -176,8 +179,22 @@ class PaperRuntime:
         if changes:
             logging.getLogger("forex.paper").info("Strategy settings loaded: %s", "; ".join(changes))
             if announce:
+                version = strategy_version(effective)
                 self.emit("strategy_updated", digest[:16] + "|" + now.isoformat(),
-                          {"changes": changes, "message": "Strategy updated and running: " + "; ".join(changes)}, now)
+                          {"changes": changes, "strategy_version": version,
+                           "message": f"Strategy updated and running (settings {version}; scores restart "
+                                      "for these settings): " + "; ".join(changes)}, now)
+
+    def record_costs(self, snaps: dict[str, Any], now: datetime) -> None:
+        """Sample live spreads and swap rates for scripts/cost_report.py; never interrupts trading."""
+        try:
+            for symbol, snap in snaps.items():
+                if (now - snap.tick.time_utc).total_seconds() <= self.paper.quote_age:
+                    self.costs.observe(symbol, snap.spec.broker_name, snap.tick, snap.spec.pip_size, now)
+            self.costs.flush(now, self.feed.swap_rates)
+        except Exception as exc:  # noqa: BLE001 - cost observation is research only
+            logging.getLogger("forex.paper").warning("Cost sampling failed (%s); trading continues.",
+                                                     type(exc).__name__)
 
     def track_stale_quotes(self, now: datetime) -> set[str]:
         stale = {symbol for symbol in self.config.broker.symbols if not self.paper.quote_fresh(symbol, now)}
@@ -215,8 +232,10 @@ class PaperRuntime:
         # Check feed freshness even when flat or between hourly analysis passes. A pair that has
         # not ticked recently only pauses its own entries; a long silence is reported as an error.
         stale = self.track_stale_quotes(now)
-        blocked = {symbol for symbol in self.config.broker.symbols
-                   if symbol not in stale and not self.paper.snapshot(symbol, now).entries_allowed}
+        snaps = {symbol: self.paper.snapshot(symbol, now) for symbol in self.config.broker.symbols
+                 if symbol not in stale}
+        blocked = {symbol for symbol, snap in snaps.items() if not snap.entries_allowed}
+        self.record_costs(snaps, now)
         for symbol in blocked - self.entry_blocks:
             self.emit("alert", "market:" + symbol + now.isoformat(),
                       {"symbol": symbol, "reason": "Market entry permission blocked (close-only, disabled or restricted mode)"}, now)
@@ -267,7 +286,8 @@ class PaperRuntime:
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue
-            payload = {"symbol": symbol, "timeframe": "H1", "analysis": json_value(result.snapshot)}
+            payload = {"symbol": symbol, "timeframe": "H1", "analysis": json_value(result.snapshot),
+                       "strategy_version": strategy_version(self.config)}
             candidate = result.candidate
             if candidate is None:
                 self.emit("no_trade", identity, {**payload, "reason": result.snapshot.no_candidate_reason}, now)
@@ -308,10 +328,10 @@ class PaperRuntime:
                                             {identity: canonical_json(payload)}, fresh_now)
             learning = self.config.learning
             if reviewed.plan is not None and learning.enabled and learning.apply_to_sizing:
-                sizing = sizing_decision(self.learning.scores(learning.prior_trades),
+                sizing = sizing_decision(self.learning.scores(learning.prior_trades, payload["strategy_version"]),
                                          candidate_keys(symbol, json_value(candidate)),
                                          min_trades=learning.min_trades, min_factor=learning.min_factor,
-                                         skip_below_r=learning.skip_below_r)
+                                         skip_below_r=learning.skip_below_r, evidence_z=learning.evidence_z)
                 self.emit("learning_decision", identity, {"symbol": symbol, "sizing": json_value(sizing)}, fresh_now)
                 reviewed = (replace(reviewed, plan=None, status="LEARNING_SKIPPED", rationale=sizing.reason)
                             if sizing.skip else scale_plan(reviewed, sizing.factor, snap.spec))
@@ -326,7 +346,10 @@ class PaperRuntime:
                 execution_now = self.clock()
                 record = self.execution.execute(candidate, risk, reviewed, execution_now,
                                                 self.session_id(execution_now), snap.account.balance)
-                self.emit("execution", identity, {**payload, "record": json_value(record)}, execution_now)
+                spread = snap.tick.ask - snap.tick.bid
+                self.emit("execution", identity, {**payload, "record": json_value(record),
+                          "entry_spread_pips": float(spread / snap.spec.pip_size),
+                          "entry_spread_r": float(spread / abs(entry - stop)) if entry != stop else None}, execution_now)
             self.store.complete(identity, self.clock())
         self.paper.journal_fills(self.journal)
         self.periodic_evidence(self.clock())

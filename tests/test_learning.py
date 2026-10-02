@@ -180,7 +180,7 @@ def test_telegram_change_set_needs_approval_and_can_be_rolled_back(tmp_path: Pat
     assert bad.startswith("Not accepted")
     review = handler.handle("/review")[0]
     assert review.document is not None and "## Scoreboard" in review.document[1]
-    assert "forex_patch" in review.document[1] and "No closed trades yet" in review.document[1]
+    assert "forex_patch" in review.document[1] and "No closed trades under these settings yet" in review.document[1]
     assert "No closed trades" in handler.handle("/scores")[0].text
 
 

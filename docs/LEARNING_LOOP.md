@@ -9,14 +9,24 @@ Telegram. No VPS login and no code editing are needed. Real-money trading stays 
    session, trade style, volatility, pair + direction, pair + regime.
    - Score = total R / (trades + 20). The 20 imaginary break-even trades mean a bucket only
      becomes confident with many real trades; a few lucky wins cannot inflate it.
-   - Confidence = trades / (trades + 20), so 20 trades is 50% and 80 trades is 80%.
+   - Evidence weight = trades / (trades + 20), so 20 trades is 50% and 80 trades is 80%. It is
+     not a probability of profit.
+   - Each bucket also shows its average with one standard error (`avg -0.12 ± 0.19 R`). One
+     trade's result varies by about 1 R, so 30 trades still leave about ±0.19 R of noise.
+   - **Scores are kept per settings version.** The version is a short code (e.g. `3f2a91c0`)
+     made from the analysis and exit settings. Approving a change to those starts a new version
+     with fresh scores, so trades taken under different rules are never mixed. Risk and learning
+     changes keep the version. Trades closed before versions existed are listed as `legacy`.
 2. **Every closed trade is explained.** The AI provider (Groq/Gemini/OpenRouter, the same ones
    used for news checks) writes why it won or lost and a lesson. Telegram receives:
    `Trade review: EURUSD SHORT WIN +1.45 R ... Why: ... Lesson: ... Score EURUSD|TREND_DOWN: 12 trades ...`
    If no provider answers, the score is still updated.
-3. **Weak buckets trade smaller.** Once a bucket has 10+ trades and a negative score, new trades
-   in it are scaled down (to as little as 25% of normal size). Strong buckets trade at full size.
-   The learning loop never trades bigger than your configured risk: that stays the ceiling.
+3. **Reliably losing buckets trade smaller.** A bucket shrinks new trades (to as little as 25% of
+   normal size) only when it has 10+ trades and its average stays below 0 R even after adding
+   2.5 standard errors (`learning.evidence_z`). An ordinary losing streak does not count: at 30
+   trades the average must be below about -0.46 R. Other trades run at full size. The learning
+   loop never trades bigger than your configured risk: that stays the ceiling. `evidence_z` is
+   set only in `config.yaml`; a review cannot lower it.
 
 ## Changing the strategy (you approve every change)
 
@@ -28,7 +38,8 @@ Telegram. No VPS login and no code editing are needed. Real-money trading stays 
 | 4 | Send `/approve N` (or `/reject N`) | Saves the change; the running bot loads it within a minute and confirms "Strategy updated and running: ..." |
 | 5 | If results get worse, send `/rollback` | Restores the previous settings |
 
-Other commands: `/scores` (strongest and weakest buckets), `/settings` (current values),
+Other commands: `/scores` (strongest and weakest buckets for the current settings version, plus
+totals for every version), `/settings` (current values and version),
 `/help`.
 
 ## What a change set can and cannot do
@@ -69,6 +80,6 @@ the learning loop needs: strengthening, weakening or pausing decisions.
 ## Reading the results honestly
 
 One trade's explanation is a story, not evidence. The score is what changes behaviour, and it
-needs dozens of trades per bucket to mean much. At about 2-3 trades a week, expect the first
+needs dozens of trades per bucket to mean much; check the ± standard error before acting. At about 2-3 trades a week, expect the first
 buckets to pass 10 trades after a month or two. Prefer reviews that change one thing at a time,
 so you can see what helped.

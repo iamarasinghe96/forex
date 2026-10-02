@@ -160,5 +160,6 @@ learning:
   min_trades: 10             # A bucket changes sizing only after this many closed trades.
   min_factor: 0.25           # Weakest buckets trade at 25% of normal size.
   skip_below_r: null         # e.g. -0.3 to skip clearly losing buckets entirely.
+  evidence_z: 2.5            # Act only on buckets whose average + 2.5 standard errors is still below 0 R.
   disabled_pairs: []
   telegram_commands: true

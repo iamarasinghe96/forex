@@ -28,6 +28,7 @@ from forex.learning import (
     parse_patch,
     read_overlay,
     review_prompt,
+    strategy_version,
     write_overlay,
 )
 
@@ -70,7 +71,8 @@ class CommandHandler:
             config = self.effective()
             flat = describe_changes(self.base, config)
             body = "\n".join(f"{k}: {v}" for k, v in knobs(config).items())
-            return [Reply("Current settings (a review may change only these):\n" + body
+            return [Reply(f"Current settings, version {strategy_version(config)} (a review may change only these):\n"
+                          + body
                           + ("\n\nChanged from config.yaml:\n" + "\n".join(flat) if flat else ""))]
         if command == "/review":
             instructions = self.base.learning.review_prompt_file.read_text(encoding="utf-8")
@@ -86,15 +88,22 @@ class CommandHandler:
         return [Reply("I did not understand that. " + HELP)]
 
     def scores(self) -> Reply:
-        prior = self.effective().learning.prior_trades
-        scores = sorted(self.store.scores(prior).values(), key=lambda b: (-b.trades, b.bucket))
+        config = self.effective()
+        prior, version = config.learning.prior_trades, strategy_version(config)
+        history = "\n".join(v.line() for v in self.store.versions())
+        scores = sorted(self.store.scores(prior, version).values(), key=lambda b: (-b.trades, b.bucket))
         if not scores:
-            return Reply("No closed trades scored yet. Scores appear after the first trade closes.")
+            return Reply(f"No closed trades under the current settings ({version}) yet. Scores appear after "
+                         "the first trade closes." + (f"\n\nEarlier settings:\n{history}" if history else ""))
         best = sorted(scores, key=lambda b: -b.score_r)[:5]
         worst = sorted(scores, key=lambda b: b.score_r)[:5]
-        return Reply("Overall: " + scores[0].line() + "\n\nStrongest:\n" + "\n".join(b.line() for b in best)
+        return Reply(f"Settings {version}. Overall: " + scores[0].line()
+                     + "\n\nStrongest:\n" + "\n".join(b.line() for b in best)
                      + "\n\nWeakest:\n" + "\n".join(b.line() for b in worst)
-                     + f"\n\nScore = total R / (trades + {prior}), evidence weight = trades / (trades + {prior}); it is not a probability of profit.")
+                     + "\n\nAll settings versions:\n" + history
+                     + f"\n\navg ± one standard error. Score = total R / (trades + {prior}), evidence weight = "
+                     f"trades / (trades + {prior}); neither is a probability of profit. Sizing shrinks only for "
+                     f"buckets whose average + {config.learning.evidence_z:g} standard errors is below 0 R.")
 
     def propose(self, text: str) -> Reply:
         try:

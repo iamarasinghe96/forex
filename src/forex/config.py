@@ -256,6 +256,10 @@ class LearningConfig(BaseModel):
     min_trades: int = Field(default=10, ge=1, le=500)     # Below this a bucket does not change sizing.
     min_factor: float = Field(default=0.25, gt=0, le=1)   # Smallest size multiplier for a weak bucket.
     skip_below_r: float | None = Field(default=None, ge=-2, le=0)  # Optional: skip clearly losing buckets.
+    # A bucket shrinks trades only if its average R stays below 0 after adding this many standard
+    # errors (2.5 ~ 1% chance per bucket of acting on a normal losing streak; 0 = any negative average).
+    # Deliberately not changeable by a learning review.
+    evidence_z: float = Field(default=2.5, ge=0, le=5)
     disabled_pairs: list[str] = Field(default_factory=list)
     telegram_commands: bool = True    # Accept /scores, /review, patches and /approve from the operator chat.
     review_prompt_file: Path = Path("src/forex/prompts/learning-review-v1.md")

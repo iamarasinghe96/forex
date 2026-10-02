@@ -16,7 +16,7 @@ from forex.broker.ic_markets_clock import (
     validate_live_server_timestamp,
 )
 from forex.config import BrokerConfig
-from forex.domain import AccountMode, AccountState, Candle, SymbolSpec, Tick, Timeframe
+from forex.domain import AccountMode, AccountState, Candle, SwapRates, SymbolSpec, Tick, Timeframe
 from forex.errors import OperatorError
 
 
@@ -135,6 +135,13 @@ class MT5Broker(Broker):
         info = self.api.symbol_info(broker_symbol)
         return bool(info is not None and getattr(info, "trade_mode", None) ==
                     getattr(self.api, "SYMBOL_TRADE_MODE_FULL", 4))
+
+    def swap_rates(self, broker_symbol: str) -> SwapRates | None:
+        info = self.api.symbol_info(broker_symbol)
+        if info is None or getattr(info, "swap_mode", None) is None:
+            return None
+        return SwapRates(broker_symbol, float(info.swap_long), float(info.swap_short), int(info.swap_mode),
+                         int(getattr(info, "swap_rollover3days", 3)))
 
     def tick(self, broker_symbol: str) -> Tick:
         raw = self.api.symbol_info_tick(broker_symbol)

@@ -13,11 +13,15 @@ bounds in the schema. It cannot change code.
 - Stop: beyond the recent 20-bar swing. Stop moves to entry at +1R. Optional trailing stop
   (multiple of the 1-hour ATR) after +1R, and a fixed target in R.
 - Sizing: risk_percent_per_trade of the balance per trade. The learning scoreboard can only scale
-  trades DOWN for weak decision buckets (never above the configured risk).
+  trades DOWN, and only for buckets that are reliably losing (average + 2.5 standard errors still
+  below 0 R). Never above the configured risk.
 
 ## What 13 years of history already showed (do not ignore this)
 - The trend rules average about +0.03 R per trade after costs (2012-2018 and 2021-2025): close to
-  break-even. USDJPY was positive in every test; EURUSD and GBPUSD were mostly negative.
+  break-even. Their entry timing beat 1,000 random entries in both periods (random entries lost
+  about 0.05-0.07 R per trade), so the timing has some value but the net edge is small.
+- USDJPY was positive in both periods, GBPUSD negative in both, EURUSD mixed. This was found after
+  looking at the results, so it is a hypothesis, not proof.
 - Range mean-reversion lost in every year tested. Keep it disabled unless the scoreboard shows
   overwhelming evidence.
 - Volatility block off (J6-a) and faster trend detection (trend_efficiency_window 10, J6-b) each
@@ -27,7 +31,11 @@ bounds in the schema. It cannot change code.
 ## How to judge the scoreboard
 - Each closed trade updates several buckets (pair, regime, session, style, volatility, pair+side,
   pair+regime). Score = total R / (trades + prior), a deliberately cautious average.
-- Under about 30 trades in a bucket, treat results as noise. Prefer changes backed by many trades.
+- Each bucket shows "avg ± standard error". One trade's result varies by about 1 R, so 30 trades
+  still leave about ±0.19 R of noise and 100 trades about ±0.10 R - several times the whole edge.
+  A difference smaller than about two standard errors is noise. Prefer "no change".
+- The scoreboard covers only trades taken under the current settings version. Approving any
+  analysis or exits change starts a new version, and its scores start from zero.
 - Change at most one or two things per review, so their effect can be seen. "No change" is a
   valid and often correct answer.
 - Pausing a pair (disabled_pairs) is reasonable when its scoreboard is clearly negative with many

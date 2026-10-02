@@ -53,7 +53,7 @@ class LearningWorker:
         if not self.store.record_trade(facts, now):
             return
         config = self.config()
-        scores = self.store.scores(config.learning.prior_trades)
+        scores = self.store.scores(config.learning.prior_trades, facts.strategy_version)
         review = self.explain(facts, scores, config)
         self.store.save_review(trade_id, review)
         outcome = "WIN" if facts.r > 0 else "LOSS" if facts.r < 0 else "BREAK-EVEN"
@@ -61,7 +61,8 @@ class LearningWorker:
         message = (f"Trade review: {facts.symbol} {facts.side} {outcome} {facts.r:+.2f} R "
                    f"({facts.exit_reason}, A${facts.pnl_aud:+.2f}). Why: {review.get('summary', '')} "
                    f"Lesson: {review.get('lesson', '')}"
-                   + (f" Score {pair.bucket.split(':', 1)[1]}: {pair.trades} trades, {pair.score_r:+.2f} R, "
+                   + (f" Score {pair.bucket.split(':', 1)[1]} (settings {facts.strategy_version}): "
+                      f"{pair.trades} trades, avg {pair.average_r:+.2f} ± {pair.std_error:.2f} R, "
                       f"evidence weight {pair.confidence:.0%}." if pair else ""))
         self.journal.append("PAPER", "trade_review", trade_id,
                             {"symbol": facts.symbol, "r": facts.r, "review": review, "message": message}, now)

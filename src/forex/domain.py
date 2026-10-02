@@ -95,6 +95,17 @@ class Tick:
 
 
 @dataclass(frozen=True)
+class SwapRates:
+    """Overnight financing as the broker publishes it (MT5 symbol properties, raw units)."""
+
+    symbol: str
+    long: float
+    short: float
+    mode: int          # MT5 SYMBOL_SWAP_MODE_*; 1 = points per lot per night.
+    triple_day: int    # Day of week charged three nights (0 = Sunday ... 6 = Saturday).
+
+
+@dataclass(frozen=True)
 class SymbolSpec:
     requested_name: str
     broker_name: str

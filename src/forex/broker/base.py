@@ -8,13 +8,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from forex.domain import AccountState, Candle, SymbolSpec, Tick, Timeframe
+from forex.domain import AccountState, Candle, SwapRates, SymbolSpec, Tick, Timeframe
 
 
 class Broker(ABC):
     def market_allows_entries(self, broker_symbol: str) -> bool:
         """Unknown market permission is not permission to enter, including in paper mode."""
         return False
+
+    def swap_rates(self, broker_symbol: str) -> SwapRates | None:
+        """Published overnight financing, read-only; None when the source does not provide it."""
+        return None
 
     @abstractmethod
     def connect(self) -> AccountState: ...

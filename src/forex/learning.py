@@ -3,15 +3,19 @@
 Three parts, all paper-only:
 
 * Scoreboard - each closed trade updates "decision buckets" (pair, regime, session, ...). A
-  bucket's score is a shrunk average R, so a few lucky trades cannot make it confident.
-* Sizing - a weak bucket scales new trades down (never up: the configured risk stays the ceiling).
+  bucket's score is a shrunk average R, so a few lucky trades cannot make it confident. Scores are
+  kept per settings version, so trades taken under different settings are not pooled.
+* Sizing - a bucket that is reliably losing (average plus ``evidence_z`` standard errors still
+  below 0 R) scales new trades down; never up: the configured risk stays the ceiling.
 * Strategy patches - a validated JSON change set limited to whitelisted settings and bounds.
   It never contains code; the operator approves it by Telegram and the runtime reloads it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import re
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -28,6 +32,10 @@ from forex.config import AppConfig
 from forex.domain import Candle, SymbolSpec, _require_utc
 
 PATCH_MARKER = "forex_patch"
+LEGACY_VERSION = "legacy"  # Trades closed before settings versions were recorded.
+# Per-trade results vary by about 1.06 R (13-year Dukascopy audit). A small bucket's own spread
+# can look tiny by luck, so its standard error never uses less than this.
+R_SPREAD_FLOOR = 1.0
 SETUPS = Literal["TREND_CONTINUATION_BREAKOUT_PULLBACK", "RANGE_MEAN_REVERSION"]
 
 
@@ -53,6 +61,7 @@ class TradeFacts:
     pnl_aud: float
     opened_at_utc: str
     closed_at_utc: str
+    strategy_version: str = LEGACY_VERSION
 
     def buckets(self) -> list[str]:
         return bucket_keys(self.symbol, self.side, self.setup, self.regime, self.style,
@@ -111,7 +120,18 @@ def trade_facts(trade_id: str, payload: Mapping[str, Any]) -> TradeFacts | None:
         conviction, entry, stop, exit_, str(payload.get("reason", "?")),
         (exit_ - entry) * sign / abs(entry - stop), float(payload.get("pnl_aud", 0)),
         str(payload.get("opened_at_utc", "")), str(payload.get("closed_at_utc", "")),
+        str((provenance.get("candidate") or {}).get("strategy_version") or LEGACY_VERSION),
     )
+
+
+def strategy_version(config: AppConfig) -> str:
+    """Short fingerprint of the settings that decide which trades are taken and how they exit.
+
+    Risk percent and learning settings are left out: R results do not depend on them.
+    """
+    settings = knobs(config)
+    raw = json.dumps({"analysis": settings["analysis"], "exits": settings["exits"]}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:8]
 
 
 def price_path(facts: TradeFacts, candles: Sequence[Candle]) -> dict[str, float | int]:
@@ -140,17 +160,56 @@ class BucketScore:
     total_r: float
     score_r: float        # Shrunk average R: total / (trades + prior), i.e. a prior of 0 R.
     confidence: float     # trades / (trades + prior), 0..1
+    std_error: float = 0.0  # Standard error of the average R (spread floored at R_SPREAD_FLOOR).
+
+    @property
+    def average_r(self) -> float:
+        return self.total_r / self.trades if self.trades else 0.0
+
+    def reliably_losing(self, z: float) -> bool:
+        """True when the average stays below 0 R even after adding ``z`` standard errors."""
+        return self.trades > 0 and self.average_r + z * self.std_error < 0
 
     def line(self) -> str:
         return (f"{self.bucket}: {self.trades} trades, {self.wins}W/{self.losses}L, "
-                f"avg {self.total_r / self.trades if self.trades else 0:+.2f} R, "
+                f"avg {self.average_r:+.2f} ± {self.std_error:.2f} R, "
                 f"score {self.score_r:+.2f} R, evidence weight {self.confidence:.0%}")
+
+
+def bucket_scores(trades: Sequence[TradeFacts], prior: int) -> dict[str, BucketScore]:
+    totals: dict[str, list[float]] = {}
+    for facts in trades:
+        for key in facts.buckets():
+            totals.setdefault(key, []).append(facts.r)
+    scores = {}
+    for key, rs in totals.items():
+        n, total = len(rs), sum(rs)
+        variance = sum((r - total / n) ** 2 for r in rs) / (n - 1) if n > 1 else 0.0
+        error = math.sqrt(max(variance, R_SPREAD_FLOOR ** 2) / n)
+        scores[key] = BucketScore(key, n, sum(r > 0 for r in rs), sum(r < 0 for r in rs), total,
+                                  total / (n + prior), n / (n + prior), error)
+    return scores
+
+
+@dataclass(frozen=True)
+class VersionSummary:
+    version: str
+    trades: int
+    total_r: float
+    first_closed_utc: str
+    last_closed_utc: str
+
+    def line(self) -> str:
+        return (f"settings {self.version}: {self.trades} trades, total {self.total_r:+.2f} R, "
+                f"{self.first_closed_utc[:10]} to {self.last_closed_utc[:10]}")
 
 
 class LearningStore:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        # learning_scores held pooled totals before settings versions existed; scores are now
+        # computed from learning_trades. The table is kept so older databases open unchanged.
         with closing(sqlite3.connect(path)) as db, db:
             db.executescript("""
             CREATE TABLE IF NOT EXISTS learning_trades (
@@ -178,12 +237,20 @@ class LearningStore:
                 return False
             db.execute("INSERT INTO learning_trades VALUES (?,?,?,NULL,?)",
                        (facts.trade_id, json.dumps(facts.__dict__), facts.r, now.isoformat()))
-            for key in facts.buckets():
-                db.execute("INSERT INTO learning_scores VALUES (?,1,?,?,?) ON CONFLICT(bucket) DO UPDATE SET "
-                           "trades=trades+1, wins=wins+excluded.wins, losses=losses+excluded.losses, "
-                           "total_r=total_r+excluded.total_r",
-                           (key, int(facts.r > 0), int(facts.r < 0), facts.r))
         return True
+
+    def trades(self, version: str | None = None) -> list[TradeFacts]:
+        """Recorded trades, oldest first; only those taken under ``version`` when given."""
+        with closing(sqlite3.connect(self.path)) as db, db:
+            rows = db.execute("SELECT facts_json FROM learning_trades ORDER BY recorded_at_utc, trade_id").fetchall()
+        result = []
+        for (raw,) in rows:
+            data = json.loads(raw)
+            data["sessions"] = tuple(data.get("sessions") or ())
+            data.setdefault("strategy_version", LEGACY_VERSION)
+            if version is None or data["strategy_version"] == version:
+                result.append(TradeFacts(**data))
+        return result
 
     def save_review(self, trade_id: str, review: Mapping[str, Any]) -> None:
         with closing(sqlite3.connect(self.path)) as db, db:
@@ -196,10 +263,17 @@ class LearningStore:
                               "ORDER BY recorded_at_utc DESC LIMIT ?", (limit,)).fetchall()
         return [{"facts": json.loads(f), "review": json.loads(r) if r else None} for f, r in rows]
 
-    def scores(self, prior: int) -> dict[str, BucketScore]:
-        with closing(sqlite3.connect(self.path)) as db, db:
-            rows = db.execute("SELECT bucket, trades, wins, losses, total_r FROM learning_scores").fetchall()
-        return {b: BucketScore(b, n, w, lo, r, r / (n + prior), n / (n + prior)) for b, n, w, lo, r in rows}
+    def scores(self, prior: int, version: str | None = None) -> dict[str, BucketScore]:
+        """Bucket scores for one settings version (None pools every version)."""
+        return bucket_scores(self.trades(version), prior)
+
+    def versions(self) -> list[VersionSummary]:
+        """One line per settings version that has closed trades, oldest first."""
+        groups: dict[str, list[TradeFacts]] = {}
+        for facts in self.trades():
+            groups.setdefault(facts.strategy_version, []).append(facts)
+        return [VersionSummary(v, len(fs), sum(f.r for f in fs), min(f.closed_at_utc for f in fs),
+                               max(f.closed_at_utc for f in fs)) for v, fs in groups.items()]
 
     def cursor(self) -> int:
         with closing(sqlite3.connect(self.path)) as db, db:
@@ -253,11 +327,19 @@ class SizingDecision:
 
 
 def sizing_decision(scores: Mapping[str, BucketScore], keys: Sequence[str], *, min_trades: int,
-                    min_factor: float, skip_below_r: float | None) -> SizingDecision:
-    """Scale a new trade by its buckets' track record. Never above 1: risk config is the ceiling."""
-    known = [scores[k] for k in keys if k in scores and scores[k].trades >= min_trades]
-    if not known:
+                    min_factor: float, skip_below_r: float | None, evidence_z: float = 0.0) -> SizingDecision:
+    """Scale a new trade down by its reliably losing buckets. Never above 1: risk config is the ceiling.
+
+    A bucket counts only with at least ``min_trades`` trades and an average that stays below 0 R
+    after adding ``evidence_z`` standard errors, so ordinary losing streaks do not shrink trades.
+    """
+    enough = [scores[k] for k in keys if k in scores and scores[k].trades >= min_trades]
+    if not enough:
         return SizingDecision(1.0, False, None, (), f"not enough history yet (needs {min_trades} trades per bucket)")
+    known = [b for b in enough if b.reliably_losing(evidence_z)]
+    if not known:
+        return SizingDecision(1.0, False, None, (), f"no bucket is reliably losing (average + {evidence_z:g} "
+                              "standard errors below 0 R); full size")
     weight = sum(b.trades for b in known)
     score = sum(b.score_r * b.trades for b in known) / weight
     names = tuple(b.bucket for b in known)
@@ -463,17 +545,23 @@ def postmortem_payload(facts: TradeFacts, path: Mapping[str, Any], scores: Mappi
 
 def review_prompt(config: AppConfig, store: LearningStore, instructions: str, now: datetime) -> str:
     """The text the operator pastes into Claude; the reply comes back as a StrategyPatch."""
-    scores = sorted(store.scores(config.learning.prior_trades).values(), key=lambda b: (-b.trades, b.bucket))
+    version = strategy_version(config)
+    scores = sorted(store.scores(config.learning.prior_trades, version).values(),
+                    key=lambda b: (-b.trades, b.bucket))
     lines = [instructions.strip(), "", f"Generated {now:%Y-%m-%d %H:%M} UTC by the paper bot.", "",
-             "## Current settings (you may change only these)", "```json",
+             f"## Current settings, version {version} (you may change only these)", "```json",
              json.dumps(knobs(config), indent=2), "```", "",
-             (f"## Scoreboard (score = total R / (trades + {config.learning.prior_trades}); "
-              "evidence weight = trades / (trades + prior), not a probability of profit)")]
-    lines += [f"- {b.line()}" for b in scores] or ["- No closed trades yet."]
+             (f"## Scoreboard for settings {version} (avg ± one standard error; score = total R / "
+              f"(trades + {config.learning.prior_trades}); evidence weight = trades / (trades + prior), "
+              "not a probability of profit)")]
+    lines += [f"- {b.line()}" for b in scores] or ["- No closed trades under these settings yet."]
+    lines += ["", "## Results by settings version (trades are never pooled across versions)"]
+    lines += [f"- {v.line()}" for v in store.versions()] or ["- None yet."]
     lines += ["", "## Recent trades with the bot's own review (newest first)"]
     for item in store.recent_reviews(20):
         f, review = item["facts"], item["review"] or {}
-        lines.append(f"- {f['closed_at_utc'][:16]} {f['symbol']} {f['side']} {f['regime']} {f['style']} "
+        lines.append(f"- {f['closed_at_utc'][:16]} [{f.get('strategy_version', LEGACY_VERSION)}] "
+                     f"{f['symbol']} {f['side']} {f['regime']} {f['style']} "
                      f"exit {f['exit_reason']} {f['r']:+.2f} R | {review.get('category', 'no review')}: "
                      f"{review.get('summary', '')} Lesson: {review.get('lesson', '')}")
     if not store.recent_reviews(1):

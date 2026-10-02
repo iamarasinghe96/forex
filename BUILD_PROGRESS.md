@@ -639,3 +639,29 @@ Run by the operator on the PC (read-only research DBs). Full verdict: docs/CODEX
 - Slow 3-pair momentum (2013-04 to 2026-09): +0.70%/yr, Sharpe 0.17, max DD 20%, versus
   constant-long +0.66%/yr; paired difference CI [-0.31, +0.34]%/month -> FAIL; -0.78%/yr under
   cost/financing stress. Not adopted.
+
+### Cost recorder and noise-resistant learning (2026-10-03)
+
+Cost recorder (Codex item 6):
+- `src/forex/costs.py` samples the live bid/ask spread of every pair each paper cycle and writes
+  hourly mean/median/p90/max to `cost_hours` in the paper DB, with MT5's published swap rates
+  (read-only `symbol_info`).
+- Each paper entry's `execution` event now records the spread paid (`entry_spread_pips`,
+  `entry_spread_r`).
+- `scripts/cost_report.py` compares these with the research costs (0.9/1.2/1.0 pips), shows the
+  spread by UTC hour, and estimates the swap the paper trades would have paid. The paper account
+  already pays the live spread; swap and commission are not charged.
+- Observation only: fills and P&L are unchanged, and a sampling failure is logged without
+  interrupting trading.
+
+Learning loop:
+- Scores are computed per settings version: a hash of the analysis and exit settings, recorded
+  on every candidate.
+- Approving an analysis or exit change starts fresh scores. Earlier trades show per version
+  (pre-version trades are `legacy`).
+- Sizing now shrinks a trade only for buckets whose average R plus `learning.evidence_z` (2.5)
+  standard errors is still below 0. Standard errors use a spread of at least 1 R; measured
+  1.04-1.08 R.
+- `evidence_z` is in config.yaml only, not in the review whitelist.
+- Telegram `/scores`, trade reviews and the `/review` prompt show `avg ± SE` and the version.
+  The review instructions now carry the random-control results.
