@@ -222,7 +222,8 @@ class PaperRuntime:
                 self.candles.upsert(recent)
                 bars[timeframe] = self.candles.load(symbol, timeframe)
             result = analyse_market(symbol, bars[Timeframe.H1], bars[Timeframe.H4], now, self.config.analysis)
-            self.trailing_atr[symbol.upper()] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
+            broker_symbol = self.feed.resolve_symbol(symbol).broker_name
+            self.trailing_atr[broker_symbol] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue

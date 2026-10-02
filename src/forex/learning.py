@@ -122,8 +122,8 @@ def price_path(facts: TradeFacts, candles: Sequence[Candle]) -> dict[str, float 
     if not bars or risk <= 0:
         return {}
     sign = 1 if facts.side == "LONG" else -1
-    best = max((float(c.high) if sign > 0 else float(c.low)) for c in bars)
-    worst = min((float(c.low) if sign > 0 else float(c.high)) for c in bars)
+    best = max(float(c.high) for c in bars) if sign > 0 else min(float(c.low) for c in bars)
+    worst = min(float(c.low) for c in bars) if sign > 0 else max(float(c.high) for c in bars)
     return {"bars_held": len(bars), "best_excursion_r": round((best - facts.entry) * sign / risk, 2),
             "worst_excursion_r": round((worst - facts.entry) * sign / risk, 2)}
 
