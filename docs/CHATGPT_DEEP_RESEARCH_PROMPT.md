@@ -201,12 +201,22 @@ At least one should use more pairs to reach statistical power.
 **5. Sizing.** Recommend risk per trade from the measured edge and variance (Kelly and
 fractional Kelly), and assess the current 5%.
 
+**7. Setup score and dynamic risk.** Read `docs/SETUP_SCORE_SPEC.md`. The operator wants each
+opportunity scored 0-100 from past, scale-invariant patterns, with higher scores taking more
+risk. Note that the existing conviction score was inversely related to results.
+- Critique the spec.
+- Recommend the feature set and model (bucket table, regularised linear, k-NN analog or monotone
+  GBM).
+- If the data is available, build the dataset with the research scripts and run acceptance
+  tests T1-T7 out of sample.
+- Report the scorecard as "N/7 passed", with numbers.
+
 **6. Verdict.** Give a one-paragraph honest answer: is a profitable retail FX bot realistic here,
 and what is the single highest-value next experiment?
 
 ## OUTPUT FORMAT
 
 1. A JSON block:
-   `{"defects": [{"claim", "evidence", "severity", "fix"}], "literature": [{"strategy", "source", "effect_after_costs", "decay", "retail_feasible"}], "proposals": [{"name", "rules", "data", "trades_per_year", "test", "falsified_if", "code_location"}], "sizing": {...}, "verdict": "..."}`
+   `{"defects": [{"claim", "evidence", "severity", "fix"}], "literature": [{"strategy", "source", "effect_after_costs", "decay", "retail_feasible"}], "proposals": [{"name", "rules", "data", "trades_per_year", "test", "falsified_if", "code_location"}], "sizing": {...}, "setup_score": {"scorecard": "N/7", "tests": [...], "recommended_model": "..."}, "verdict": "..."}`
 2. Then plain-English prose for the operator, who is learning to trade: short sentences, no
    jargon without a one-line explanation.
