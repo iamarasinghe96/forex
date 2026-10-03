@@ -665,3 +665,6 @@ Learning loop:
 - `evidence_z` is in config.yaml only, not in the review whitelist.
 - Telegram `/scores`, trade reviews and the `/review` prompt show `avg ± SE` and the version.
   The review instructions now carry the random-control results.
+Deployed to the VPS on 2026-10-03 (Saturday, market closed): C:\forex moved from 0a4ac35 to
+119a87f. Paper DB backed up to C:\forex\backup first; no halt latch; 235 tests passed on Windows.
+This also brings PR #19 trailing, the held-pair ATR refresh and the weekend notice to the VPS.
