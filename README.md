@@ -9,6 +9,9 @@ No real orders, completed elapsed soak or formally validated trading edge is cla
 Start with `BUILD_PROGRESS.md`, `OPERATOR_SETUP.md`, `docs/PAPER_OPERATIONS.md` and
 `docs/INTELLIGENCE.md`. The original Layer 1–5 description below remains the baseline context.
 
+Setup scoring export, training, acceptance tests and shadow rollout are documented in
+[docs/SETUP_SCORING.md](docs/SETUP_SCORING.md). Dynamic setup sizing defaults disabled.
+
 Layers 1–2 provide the verified read-only broker and market-data foundation. Layer 3 adds pure,
 deterministic analysis and candidate generation; it still contains no risk sizing or order execution
 and makes no claim of a validated trading edge.

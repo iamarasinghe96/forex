@@ -40,7 +40,7 @@ import statistics
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -67,6 +67,9 @@ class Hour:
     signal: bool        # strategy would enter here
     trend: bool = True  # H4 regime is TREND_UP/TREND_DOWN (the strategy's precondition)
     segment: int = 0    # contiguous-data segment; no trade may span two
+    opportunity: bool = False  # any candidate from the primary rule (setup-score dataset)
+    setup: str = ""
+    features: dict[str, float] = field(default_factory=dict)  # scale-free SetupFeatures, on request
 
     @property
     def risk_atr(self) -> float:
@@ -81,12 +84,14 @@ def pip(symbol: str) -> float:
     return 0.01 if symbol.endswith("JPY") else 0.0001
 
 
-def analyse_pair(job: tuple[str, str, str, str, str, float, int]) -> tuple[str, list[Hour], int]:
+def analyse_pair(job: tuple[str, str, str, str, str, float, int], *,
+                 include_features: bool = False) -> tuple[str, list[Hour], int]:
     from research_db import load_candles, segments
 
     from forex.analysis import InsufficientDataError, analyse_market, prepare_candles
     from forex.config import AnalysisConfig
     from forex.domain import Timeframe
+    from forex.scoring import SetupFeatures
 
     symbol, database, config_json, start, end, min_conviction, max_gap = job
     config = AnalysisConfig.model_validate_json(config_json)
@@ -116,13 +121,16 @@ def analyse_pair(job: tuple[str, str, str, str, str, float, int]) -> tuple[str, 
             candidate = result.candidate
             signal = bool(candidate is not None and candidate.setup_type.value == TREND
                           and (1 - candidate.uncertainty) * 100 >= min_conviction)
-            if signal and candidate is not None:
+            if candidate is not None:
                 direction = 1 if candidate.side.value == "LONG" else -1
                 levels = candidate.structural_reference_levels
                 stop = float(levels["rolling_low" if direction > 0 else "rolling_high"])
             hours.append(Hour(candle.timestamp_utc, float(candle.open), float(candle.high), float(candle.low),
                               float(candle.close), direction, stop, float(features["h1_atr"]), signal,
-                              snap.regime.label.value in TREND_LABELS, number))
+                              snap.regime.label.value in TREND_LABELS, number, candidate is not None,
+                              candidate.setup_type.value if candidate else "",
+                              dict(SetupFeatures.from_snapshot(snap).values)
+                              if include_features and candidate is not None else {}))
     return symbol, hours, len(parts)
 
 
@@ -139,12 +147,16 @@ def shared_stop(sign: int, entry: float, initial: float, stop: float, price: flo
 
 
 def outcomes(symbol: str, hours: list[Hour], target_r: float, breakeven_r: float | None,
-             trail_atr: float | None, horizon: int) -> list[Outcome | None]:
+             trail_atr: float | None, horizon: int, *, round_trip_cost_pips: float | None = None,
+             opportunities_only: bool = False) -> list[Outcome | None]:
     """For every hour: the trade if entered at that hour's close, or None if no valid trade."""
-    cost = COST_PIPS.get(symbol, 1.0) * pip(symbol)
+    cost = (COST_PIPS.get(symbol, 1.0) if round_trip_cost_pips is None else round_trip_cost_pips) * pip(symbol)
     live_rule = breakeven_r == 1.0
     result: list[Outcome | None] = []
     for i, h in enumerate(hours):
+        if opportunities_only and not h.opportunity:
+            result.append(None)
+            continue
         risk = (h.close - h.stop) * h.direction
         if h.direction == 0 or not risk > 0:
             result.append(None)

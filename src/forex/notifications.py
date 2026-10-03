@@ -34,10 +34,18 @@ class NotificationWorker:
                 self.alerter.send(str(event.payload.get("message", event.kind))[:3500])
                 count += 1
             elif event.kind in {"trade_opened", "trade_closed", "alert", "error"}:
+                score = ((event.payload.get("decision_provenance") or {}).get("candidate", {}).get("setup_score", {})
+                         if isinstance(event.payload.get("decision_provenance"), dict) else {})
+                risk = ((event.payload.get("decision_provenance") or {}).get("context_review", {}).get("review", {}).get("plan", {})
+                        if isinstance(event.payload.get("decision_provenance"), dict) else {}) or {}
+                score_text = (f"score {float(score['score_0_100']):.0f}/100, "
+                              f"risk {100 * float(risk.get('actual_risk_percent', 0)):.1f}%. "
+                              if score.get("status") == "available" else "")
                 # Do not forward complete payloads, account identifiers or provider requests.
                 self.alerter.send(f"{event.kind}: {event.observed_at_utc.isoformat()}; "
                                   f"{event.payload.get('symbol', '')} "
                                   f"{event.payload.get('reason', event.payload.get('error_type', ''))}. "
+                                  + score_text +
                                   "Review the operator dashboard/local journal.")
                 count += 1
             with closing(sqlite3.connect(self.journal.path)) as db, db:

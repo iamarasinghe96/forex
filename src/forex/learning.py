@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from forex.config import AppConfig
 from forex.domain import Candle, SymbolSpec, _require_utc
+from forex.scoring import ScoreModel
 
 PATCH_MARKER = "forex_patch"
 LEGACY_VERSION = "legacy"  # Trades closed before settings versions were recorded.
@@ -62,10 +63,13 @@ class TradeFacts:
     opened_at_utc: str
     closed_at_utc: str
     strategy_version: str = LEGACY_VERSION
+    score_band: str | None = None
+    sizing_version: str | None = None
 
     def buckets(self) -> list[str]:
-        return bucket_keys(self.symbol, self.side, self.setup, self.regime, self.style,
+        keys = bucket_keys(self.symbol, self.side, self.setup, self.regime, self.style,
                            self.sessions, self.volatility)
+        return keys + ([f"score:{self.score_band}"] if self.score_band else [])
 
 
 def volatility_bucket(value: float | None) -> str:
@@ -84,10 +88,12 @@ def bucket_keys(symbol: str, side: str, setup: str, regime: str, style: str,
 
 def candidate_keys(symbol: str, candidate: Mapping[str, Any]) -> list[str]:
     """Bucket keys for a not-yet-traded candidate (journal JSON form)."""
-    return bucket_keys(symbol.upper(), str(candidate.get("side")), str(candidate.get("setup_type")),
+    keys = bucket_keys(symbol.upper(), str(candidate.get("side")), str(candidate.get("setup_type")),
                        str((candidate.get("h4_regime") or {}).get("label")),
                        str(candidate.get("trade_style")), tuple(candidate.get("session_context") or ()),
                        volatility_bucket(_float(candidate.get("volatility_context"))))
+    band = (candidate.get("setup_score") or {}).get("band")
+    return keys + ([f"score:{band}"] if band else [])
 
 
 def _float(value: Any) -> float | None:
@@ -121,18 +127,30 @@ def trade_facts(trade_id: str, payload: Mapping[str, Any]) -> TradeFacts | None:
         (exit_ - entry) * sign / abs(entry - stop), float(payload.get("pnl_aud", 0)),
         str(payload.get("opened_at_utc", "")), str(payload.get("closed_at_utc", "")),
         str((provenance.get("candidate") or {}).get("strategy_version") or LEGACY_VERSION),
+        ((provenance.get("candidate") or {}).get("setup_score") or {}).get("band"),
+        (provenance.get("candidate") or {}).get("sizing_version"),
     )
 
 
-def strategy_version(config: AppConfig) -> str:
+def strategy_version(config: AppConfig, model_sha256: str | None = None) -> str:
     """Short fingerprint of the settings that decide which trades are taken and how they exit.
 
     Includes how H4 bars are built. Risk percent and learning settings are left out: R results
     do not depend on them.
     """
     settings = knobs(config)
-    raw = json.dumps({"analysis": settings["analysis"], "exits": settings["exits"],
-                      "h4_bars": f"fixed-utc-{config.market_data.h4_alignment_hour_utc}"}, sort_keys=True)
+    identity: dict[str, object] = {"analysis": settings["analysis"], "exits": settings["exits"],
+                                    "h4_bars": f"fixed-utc-{config.market_data.h4_alignment_hour_utc}"}
+    if config.scoring.enabled or config.scoring.shadow:
+        if model_sha256 is not None:
+            if model_sha256:
+                identity["setup_model_sha256"] = model_sha256
+        else:
+            try:
+                identity["setup_model_sha256"] = ScoreModel.load(config.scoring.model_path).sha256
+            except (OSError, ValueError, KeyError, TypeError):
+                pass  # Missing shadow model preserves the existing strategy identity.
+    raw = json.dumps(identity, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:8]
 
 
@@ -265,8 +283,13 @@ class LearningStore:
                               "ORDER BY recorded_at_utc DESC LIMIT ?", (limit,)).fetchall()
         return [{"facts": json.loads(f), "review": json.loads(r) if r else None} for f, r in rows]
 
-    def scores(self, prior: int, version: str | None = None) -> dict[str, BucketScore]:
+    def scores(self, prior: int, version: str | None = None, *,
+               sizing: bool = False) -> dict[str, BucketScore]:
         """Bucket scores for one settings version (None pools every version)."""
+        if sizing:
+            # Shadow model changes must not reset or contaminate existing sizing evidence.
+            trades = [t for t in self.trades() if version is None or (t.sizing_version or t.strategy_version) == version]
+            return bucket_scores(trades, prior)
         return bucket_scores(self.trades(version), prior)
 
     def versions(self) -> list[VersionSummary]:

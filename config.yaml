@@ -153,6 +153,17 @@ paper:
   target_reward_risk: 10.0      # Let winners run: far target, the trailing stop exits (null = 1.5R).
   atr_trailing_multiple: 3.0    # Trail 3x H1 ATR behind price once a trade is +1R (null = off).
 
+# Offline setup score. Activation requires OOS acceptance and four weeks of shadow records.
+scoring:
+  enabled: false
+  shadow: true
+  model_path: data/models/setup-score-v1.json
+  kelly_fraction: 0.25
+  variance_r: 1.1
+  min_risk_percent: 0.25
+  max_risk_percent: 5.0
+  skip_below_expected_r: 0.0
+
 # Learning loop (PAPER only). Every closed trade is scored and explained; weak decision buckets
 # trade smaller (never above the risk above). Strategy changes arrive only as validated change
 # sets approved in Telegram (/review, paste Claude's reply, /approve N); see docs/LEARNING_LOOP.md.

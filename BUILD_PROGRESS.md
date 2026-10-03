@@ -810,3 +810,40 @@ No settings change based on these runs.
 0% real money).
 
 Tests: 249 passed; ruff clean; mypy shows only the two Windows-only msvcrt errors.
+
+### Setup score merged from Codex (codex/setup-score 32cc58b), shadow only (2026-10-03)
+
+Codex implemented docs/SETUP_SCORE_SPEC.md:
+- dataset export: scripts/export_setup_dataset.py;
+- fixed-order model training with purged yearly walk-forward folds and unseen-pair confirmation:
+  scripts/train_setup_score.py and scripts/setup_score_training.py, with the optional extra
+  `score-training` (numpy, scikit-learn);
+- portable JSON scoring with hash and feature checks: src/forex/scoring.py;
+- quarter-Kelly risk mapping, used only when activated: risk.risk_percent_for_score;
+- shadow logging on every candidate, score bands in learning, and score plus risk in Telegram
+  trade alerts.
+
+Usage: docs/SETUP_SCORING.md.
+
+**Defaults are scoring.enabled false and shadow true.** With no model file, candidates record
+"unavailable" and sizing is unchanged. Activation refuses to start unless:
+- the model passed 7/7 in both periods and on six unseen pairs;
+- settings match the model;
+- the journal holds at least 28 days of shadow scores for that model hash.
+
+**Merge review (Claude):**
+- Kept the margin cap: the score sets the risk percent first, then size_position applies the
+  margin cap.
+- The settings version keeps the H4 rule and adds the model hash. The model's strategy
+  signature now includes the H4 alignment.
+- The export moved onto the corrected causal replay: live protective_stop exits, data-hole
+  segmentation, and censored trades excluded. Codex's opportunity, feature and cost options were
+  re-applied.
+- Shadow scoring errors no longer stop trading: they are recorded as status "error". Activated
+  sizing still fails closed.
+
+Tests: 269 passed with training extras. A clean environment without scikit-learn, like the VPS,
+gives 259 passed, 1 skipped. Ruff clean; mypy only the two Windows-only errors.
+
+No historical model exists yet. Acceptance needs the research databases plus downloaded
+AUDUSD/USDCAD/USDCHF/NZDUSD/EURJPY/GBPJPY history for the unseen-pair confirmation.
