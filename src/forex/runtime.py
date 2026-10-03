@@ -45,6 +45,7 @@ from forex.persistence import CandleStore, RiskSessionStore
 from forex.risk import DecisionStatus, PortfolioRiskState, evaluate_daily_risk
 from forex.risk import decide_risk as evaluate_candidate
 from forex.risk_policy import policy_from_config
+from forex.scoring import ScoreModel, SetupFeatures, strategy_signature
 from forex.serialization import canonical_json, json_value
 
 
@@ -107,6 +108,7 @@ class PaperRuntime:
         self.learning = LearningStore(paper.path)
         self.policy = policy_from_config(config.risk)
         self.journal = JournalStore(paper.path)
+        self.score_model: ScoreModel | None = None
         self.sessions = RiskSessionStore(paper.path)
         self.store = RuntimeStore(paper.path)
         self.candles = CandleStore(paper.path)
@@ -170,6 +172,7 @@ class PaperRuntime:
             return
         changes = describe_changes(self.config, effective)
         self.config = effective
+        self.load_score_model(now)
         self.policy = policy_from_config(effective.risk)
         self.execution = ExecutionService(self.paper, ExecutionStore(self.paper.path), self.sessions,
                                           self.policy, effective.broker.magic_number,
@@ -184,6 +187,38 @@ class PaperRuntime:
                           {"changes": changes, "strategy_version": version,
                            "message": f"Strategy updated and running (settings {version}; scores restart "
                                       "for these settings): " + "; ".join(changes)}, now)
+
+    def load_score_model(self, now: datetime) -> None:
+        """Load once per configuration reload; activation fails closed on missing evidence."""
+        scoring = self.config.scoring
+        self.score_model = None
+        if not (scoring.enabled or scoring.shadow):
+            return
+        try:
+            model = ScoreModel.load(scoring.model_path)
+            if model.document.get("strategy_signature") != strategy_signature(self.config):
+                raise ValueError("setup model analysis or exit rules differ from runtime")
+            if scoring.enabled and not scoring.shadow:
+                model.require_acceptance(self.config)
+                with closing(sqlite3.connect(self.journal.path)) as db:
+                    row = db.execute(
+                        "SELECT MIN(observed_at_utc),MAX(observed_at_utc) FROM journal_events "
+                        "WHERE mode='PAPER' AND kind='candidate' "
+                        "AND json_extract(payload_json,'$.setup_score.model_sha256')=? "
+                        "AND json_extract(payload_json,'$.setup_score.shadow')=1 "
+                        "AND json_extract(payload_json,'$.setup_score.status')='available' "
+                        "AND json_extract(payload_json,'$.setup_score.strategy_signature')=?",
+                        (model.sha256, strategy_signature(self.config)),
+                    ).fetchone()
+                if not row or not row[0] or not row[1] or datetime.fromisoformat(row[1]) > now or (
+                    datetime.fromisoformat(row[1]) - datetime.fromisoformat(row[0]) < timedelta(weeks=4)
+                ):
+                    raise ValueError("setup sizing requires at least four weeks of recorded shadow scores for this model")
+            self.score_model = model
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            if scoring.enabled and not scoring.shadow:
+                raise OperatorError(f"Setup sizing blocked: {exc}") from exc
+            logging.getLogger("forex.paper").warning("Setup shadow model unavailable (%s)", type(exc).__name__)
 
     def record_costs(self, snaps: dict[str, Any], now: datetime) -> None:
         """Sample live spreads and swap rates for scripts/cost_report.py; never interrupts trading."""
@@ -287,13 +322,27 @@ class PaperRuntime:
             if not self.store.claim(identity, now):
                 continue
             payload = {"symbol": symbol, "timeframe": "H1", "analysis": json_value(result.snapshot),
-                       "strategy_version": strategy_version(self.config)}
+                       "strategy_version": strategy_version(self.config, self.score_model.sha256 if self.score_model else "")}
+            dynamic_scoring = self.config.scoring.enabled and not self.config.scoring.shadow
+            payload["sizing_version"] = (payload["strategy_version"] if dynamic_scoring else
+                                         strategy_version(self.config, ""))
             candidate = result.candidate
             if candidate is None:
                 self.emit("no_trade", identity, {**payload, "reason": result.snapshot.no_candidate_reason}, now)
                 self.store.complete(identity, now)
                 continue
-            payload.update(candidate=json_value(candidate), trade_style=candidate.trade_style.value)
+            setup_score = None
+            score_payload: dict[str, Any] = {"status": "disabled", "shadow": True}
+            if self.config.scoring.enabled or self.config.scoring.shadow:
+                features = SetupFeatures.from_snapshot(result.snapshot)
+                score_payload = {"status": "unavailable", "shadow": True, "features": dict(features.values),
+                                 "strategy_signature": strategy_signature(self.config)}
+                if self.score_model is not None:
+                    setup_score = self.score_model.score(features)
+                    score_payload.update(json_value(setup_score), status="available",
+                                         shadow=not (self.config.scoring.enabled and not self.config.scoring.shadow))
+            payload.update(candidate=json_value(candidate), trade_style=candidate.trade_style.value,
+                           setup_score=score_payload)
             self.emit("candidate", identity, payload, now)
             snap = self.paper.snapshot(symbol, self.clock())
             if not snap.entries_allowed:
@@ -318,7 +367,7 @@ class PaperRuntime:
                          entry + (entry - stop) * Decimal(str(target_rr)))
             risk = evaluate_candidate(candidate, snap.account, snap.spec, entry, stop, objective,
                                       PortfolioRiskState(tuple(p.risk_position() for p in snap.positions)),
-                                      daily, self.policy)
+                                      daily, self.policy, setup_score=setup_score, scoring=self.config.scoring)
             self.emit("risk_decision", identity, {**payload, "risk": json_value(risk)}, fresh_now)
             if risk.status is not DecisionStatus.ELIGIBLE:
                 self.emit("hard_risk_block", identity, {**payload, "risk": json_value(risk)}, fresh_now)
@@ -328,8 +377,10 @@ class PaperRuntime:
                                             {identity: canonical_json(payload)}, fresh_now)
             learning = self.config.learning
             if reviewed.plan is not None and learning.enabled and learning.apply_to_sizing:
-                sizing = sizing_decision(self.learning.scores(learning.prior_trades, payload["strategy_version"]),
-                                         candidate_keys(symbol, json_value(candidate)),
+                sizing = sizing_decision(self.learning.scores(learning.prior_trades, payload["sizing_version"],
+                                                             sizing=not dynamic_scoring),
+                                         candidate_keys(symbol, {**json_value(candidate),
+                                                                 "setup_score": score_payload if dynamic_scoring else {}}),
                                          min_trades=learning.min_trades, min_factor=learning.min_factor,
                                          skip_below_r=learning.skip_below_r, evidence_z=learning.evidence_z)
                 self.emit("learning_decision", identity, {"symbol": symbol, "sizing": json_value(sizing)}, fresh_now)

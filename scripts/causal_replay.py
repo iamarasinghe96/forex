@@ -28,7 +28,7 @@ import random
 import statistics
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -47,6 +47,9 @@ class Hour:
     stop: float         # structural stop for that direction (nan if unavailable)
     atr: float
     signal: bool        # strategy (trend55) would enter here
+    opportunity: bool = False
+    setup: str = ""
+    features: dict[str, float] = field(default_factory=dict)
 
 
 def session(hour: int) -> int:
@@ -57,12 +60,14 @@ def pip(symbol: str) -> float:
     return 0.01 if symbol.endswith("JPY") else 0.0001
 
 
-def analyse_pair(job: tuple[str, str, str, str, str, str, float]) -> tuple[str, list[Hour]]:
+def analyse_pair(job: tuple[str, str, str, str, str, str, float], *,
+                 include_features: bool = False) -> tuple[str, list[Hour]]:
     from research_db import load_candles
 
     from forex.analysis import InsufficientDataError, analyse_market, prepare_candles
     from forex.config import AnalysisConfig
     from forex.domain import Timeframe
+    from forex.scoring import SetupFeatures
 
     symbol, database, config_json, start, end, _, min_conviction = job
     config = AnalysisConfig.model_validate_json(config_json)
@@ -85,22 +90,29 @@ def analyse_pair(job: tuple[str, str, str, str, str, str, float]) -> tuple[str, 
         candidate = result.candidate
         signal = bool(candidate is not None and candidate.setup_type.value == TREND
                       and (1 - candidate.uncertainty) * 100 >= min_conviction)
-        if signal and candidate is not None:
+        if candidate is not None:
             direction = 1 if candidate.side.value == "LONG" else -1
             levels = candidate.structural_reference_levels
             stop = float(levels["rolling_low" if direction > 0 else "rolling_high"])
         hours.append(Hour(candle.timestamp_utc, float(candle.open), float(candle.high), float(candle.low),
                           float(candle.close),
-                          direction, stop, float(features["h1_atr"]), signal))
+                          direction, stop, float(features["h1_atr"]), signal,
+                          candidate is not None, candidate.setup_type.value if candidate else "",
+                          dict(SetupFeatures.from_snapshot(snap).values) if include_features and candidate else {}))
     return symbol, hours
 
 
 def outcomes(symbol: str, hours: list[Hour], target_r: float, breakeven_r: float | None,
-             trail_atr: float | None, horizon: int, cost_scale: float) -> list[tuple[int, float, bool] | None]:
+             trail_atr: float | None, horizon: int, cost_scale: float, *,
+             round_trip_cost_pips: float | None = None,
+             opportunities_only: bool = False) -> list[tuple[int, float, bool] | None]:
     """For every hour: (exit index, net R, still_open) if entered at that hour's close, else None."""
-    cost = COST_PIPS.get(symbol, 1.0) * pip(symbol) * cost_scale
+    cost = (COST_PIPS.get(symbol, 1.0) if round_trip_cost_pips is None else round_trip_cost_pips) * pip(symbol) * cost_scale
     result: list[tuple[int, float, bool] | None] = []
     for i, h in enumerate(hours):
+        if opportunities_only and not h.opportunity:
+            result.append(None)
+            continue
         risk = (h.close - h.stop) * h.direction
         if h.direction == 0 or not risk > 0:
             result.append(None)

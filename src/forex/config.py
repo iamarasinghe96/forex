@@ -266,6 +266,25 @@ class LearningConfig(BaseModel):
     postmortem_prompt_file: Path = Path("src/forex/prompts/trade-postmortem-v1.md")
 
 
+class ScoringConfig(BaseModel):
+    """Offline-trained setup model; activation requires acceptance and shadow evidence."""
+
+    enabled: bool = False
+    shadow: bool = True
+    model_path: Path = Path("data/models/setup-score-v1.json")
+    kelly_fraction: float = Field(default=0.25, ge=0.25, le=0.5, allow_inf_nan=False)
+    variance_r: float = Field(default=1.1, gt=0, allow_inf_nan=False)
+    min_risk_percent: float = Field(default=0.25, ge=0, le=5, allow_inf_nan=False)
+    max_risk_percent: float = Field(default=5, gt=0, le=5, allow_inf_nan=False)
+    skip_below_expected_r: float = Field(default=0, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def ordered_risk(self) -> ScoringConfig:
+        if self.min_risk_percent > self.max_risk_percent:
+            raise ValueError("scoring minimum risk must not exceed maximum risk")
+        return self
+
+
 class AppConfig(BaseModel):
     mode: Literal["paper", "live"]
     operator_timezone: str
@@ -282,6 +301,7 @@ class AppConfig(BaseModel):
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     paper: PaperConfig = Field(default_factory=PaperConfig)
     learning: LearningConfig = Field(default_factory=LearningConfig)
+    scoring: ScoringConfig = Field(default_factory=ScoringConfig)
 
     @model_validator(mode="after")
     def live_requires_deliberate_config(self) -> AppConfig:

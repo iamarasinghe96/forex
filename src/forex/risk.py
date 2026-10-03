@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
 from enum import Enum
 from typing import ClassVar
 
 from forex.analysis import Availability, Evidence, Side, TradeCandidate
+from forex.config import ScoringConfig
 from forex.domain import AccountState, SymbolSpec
+from forex.scoring import ScoreResult
 
 FUSION_POLICY_VERSION = "layer5-fusion-v1-unvalidated"
 RISK_POLICY_IMPLEMENTATION_VERSION = "layer5-risk-v1"
@@ -99,6 +102,7 @@ class DecisionStatus(str, Enum):
 
 
 class RiskBlockReason(str, Enum):
+    SETUP_SCORE_NOT_POSITIVE = "SETUP_EXPECTED_R_NOT_ABOVE_MINIMUM"
     CONVICTION_BELOW_MINIMUM = "CONVICTION_BELOW_CONFIGURED_MINIMUM"
     INVALID_LEVERAGE = "ACCOUNT_LEVERAGE_EXCEEDS_CONFIGURED_MAXIMUM"
     INVALID_STOP_SIDE = "STRUCTURAL_STOP_ON_WRONG_SIDE"
@@ -257,6 +261,17 @@ def risk_tier(conviction: Decimal, policy: RiskPolicy) -> RiskTier:
     return RiskTier(ConvictionBand.RISK_5_PERCENT, policy.high_risk_percent)
 
 
+def risk_percent_for_score(expected_r: float, config: ScoringConfig) -> Decimal:
+    """Fraction of balance, as in existing risk tiers: 0.01 means 1%, not 0.01%."""
+    if not math.isfinite(expected_r):
+        raise ValueError("predicted expected R must be finite")
+    if expected_r <= config.skip_below_expected_r:
+        return Decimal(0)
+    kelly = Decimal(str(config.kelly_fraction)) * Decimal(str(expected_r)) / Decimal(str(config.variance_r))
+    return min(Decimal(str(config.max_risk_percent)) / 100,
+               max(Decimal(str(config.min_risk_percent)) / 100, kelly))
+
+
 def derive_conviction(candidate: TradeCandidate, policy: RiskPolicy,
                       contexts: tuple[ContextualConviction, ...] = ()) -> ConvictionResult:
     """Preserve Layer 3's score: ``(1 - uncertainty) * 100``; exclude unavailable context."""
@@ -408,9 +423,17 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
                 entry: Decimal, stop: Decimal, objective: Decimal | None,
                 portfolio: PortfolioRiskState, daily: DailyRiskState,
                 policy: RiskPolicy,
-                contexts: tuple[ContextualConviction, ...] = ()) -> RiskDecision:
+                contexts: tuple[ContextualConviction, ...] = (), *,
+                setup_score: ScoreResult | None = None,
+                scoring: ScoringConfig | None = None) -> RiskDecision:
     conviction = derive_conviction(candidate, policy, contexts)
     tier = risk_tier(conviction.final_conviction, policy)
+    dynamic = scoring is not None and scoring.enabled and not scoring.shadow
+    if dynamic:
+        if setup_score is None or scoring is None:
+            raise ValueError("enabled setup sizing requires a validated model score")
+        fraction = risk_percent_for_score(setup_score.expected_r, scoring)
+        tier = RiskTier(conviction.band, fraction if fraction > 0 else None)
     daily_result = evaluate_daily_risk(daily, policy)
     plan: PositionRiskPlan | None = None
     reasons: tuple[RiskBlockReason, ...]
@@ -418,7 +441,7 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
         status, reasons = DecisionStatus.HALT_FLATTEN_REQUIRED, daily_result.reasons
     elif tier.risk_percent is None:
         status, reasons = DecisionStatus.SIGNAL_NOT_ELIGIBLE, (
-            RiskBlockReason.CONVICTION_BELOW_MINIMUM,)
+            RiskBlockReason.SETUP_SCORE_NOT_POSITIVE if dynamic else RiskBlockReason.CONVICTION_BELOW_MINIMUM,)
     else:
         plan, reasons = size_position(account, spec, candidate.side, entry, stop,
                                       tier.risk_percent, policy, objective)
@@ -469,6 +492,9 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
         "contexts": [{"source": item.source, "availability": item.availability.value,
                       "conviction": str(item.conviction), "confidence": str(item.confidence)}
                      for item in contexts],
+        "setup_sizing": ({"model_sha256": setup_score.model_sha256,
+                          "expected_r": setup_score.expected_r,
+                          "config": scoring.model_dump(mode="json")} if dynamic and setup_score and scoring else None),
     }, sort_keys=True)
     identifier = hashlib.sha256(stable.encode()).hexdigest()[:24]
     permitted = plan if status is DecisionStatus.ELIGIBLE else None

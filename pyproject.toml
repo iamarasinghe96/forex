@@ -16,6 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+score-training = ["numpy>=2,<3", "scikit-learn>=1.6,<2"]
 firebase = ["firebase-admin>=7.1,<8"]
 mt5 = ["MetaTrader5>=5.0.45; platform_system == 'Windows'"]
 dev = ["mypy>=1.11,<2", "pytest>=8.3,<10", "ruff>=0.6,<1", "types-PyYAML>=6.0"]
