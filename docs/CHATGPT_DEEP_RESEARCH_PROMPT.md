@@ -201,7 +201,7 @@ At least one should use more pairs to reach statistical power.
 **5. Sizing.** Recommend risk per trade from the measured edge and variance (Kelly and
 fractional Kelly), and assess the current 5%.
 
-**7. Setup score and dynamic risk.** Read `docs/SETUP_SCORE_SPEC.md`. The operator wants each
+**6. Setup score and dynamic risk.** Read `docs/SETUP_SCORE_SPEC.md`. The operator wants each
 opportunity scored 0-100 from past, scale-invariant patterns, with higher scores taking more
 risk. Note that the existing conviction score was inversely related to results.
 - Critique the spec.
@@ -211,7 +211,7 @@ risk. Note that the existing conviction score was inversely related to results.
   tests T1-T7 out of sample.
 - Report the scorecard as "N/7 passed", with numbers.
 
-**6. Verdict.** Give a one-paragraph honest answer: is a profitable retail FX bot realistic here,
+**7. Verdict.** Give a one-paragraph honest answer: is a profitable retail FX bot realistic here,
 and what is the single highest-value next experiment?
 
 ## OUTPUT FORMAT
