@@ -26,6 +26,7 @@ from forex.costs import CostRecorder
 from forex.domain import Timeframe, _require_utc
 from forex.errors import OperatorError
 from forex.execution import ExecutionService, ExecutionStore
+from forex.history import aggregate_h4
 from forex.journal import JournalStore
 from forex.learning import (
     LearningStore,
@@ -270,16 +271,17 @@ class PaperRuntime:
                 continue
             if symbol.upper() in {p.upper() for p in self.config.learning.disabled_pairs}:
                 continue  # Paused by an approved learning review; open trades are still managed.
-            bars = {}
-            for timeframe in Timeframe:
-                recent = closed_candles(self.feed.candles(symbol, timeframe,
-                                        now - timedelta(days=self.config.paper.history_days), now), now)
-                if not recent:
-                    raise OperatorError("Closed paper market history is unavailable; restore MT5 data.")
-                validate_candle_freshness(recent[-1], now, self.config.market_data)
-                self.candles.upsert(recent)
-                bars[timeframe] = self.candles.load(symbol, timeframe)
-            result = analyse_market(symbol, bars[Timeframe.H1], bars[Timeframe.H4], now, self.config.analysis)
+            recent = closed_candles(self.feed.candles(symbol, Timeframe.H1,
+                                    now - timedelta(days=self.config.paper.history_days), now), now)
+            if not recent:
+                raise OperatorError("Closed paper market history is unavailable; restore MT5 data.")
+            validate_candle_freshness(recent[-1], now, self.config.market_data)
+            self.candles.upsert(recent)
+            h1 = list(self.candles.load(symbol, Timeframe.H1))
+            # H4 bars come from H1 on fixed UTC boundaries, as in the research data, not from MT5
+            # (whose H4 bars start at the broker's midnight, 1-2 hours off the tested bars).
+            h4 = aggregate_h4(h1, self.config.market_data.h4_alignment_hour_utc)
+            result = analyse_market(symbol, h1, h4, now, self.config.analysis)
             broker_symbol = self.feed.resolve_symbol(symbol).broker_name
             self.trailing_atr[broker_symbol] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
             self.atr_updated[broker_symbol] = now

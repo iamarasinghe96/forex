@@ -31,6 +31,7 @@ market_data:
   history_chunk_days: 90
   history_retry_count: 3
   server_clock_tolerance_seconds: 300  # UNVALIDATED operational clock sanity tolerance.
+  h4_alignment_hour_utc: 0  # Paper H4 bars = H1 grouped at 00/04/08/12/16/20 UTC, as in all research.
 
 # Layer 3 research starting points. Every value is UNVALIDATED and versioned for Layer 4 testing.
 analysis:
@@ -108,6 +109,9 @@ risk:
   conviction_risk_percent: {low: 5.0, medium: 5.0, high: 5.0}   # Aggressive paper profile (was 2/3.5/5).
   conviction_thresholds: {minimum: 0, medium: 70, high: 85}  # Minimum 0 = no confidence floor (was 55).
   target_trades_per_week: {minimum: 3, maximum: 8}
+  # Margin realism: a trade is cut to what free margin allows at the account leverage (30:1),
+  # as a real A$1,000 account would; 5% risk with a tight stop can need more than 30:1.
+  enforce_margin: true
 
 # Layer 7 operational defaults (UNVALIDATED). No command enables broker execution.
 execution:

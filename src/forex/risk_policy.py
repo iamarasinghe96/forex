@@ -24,4 +24,5 @@ def policy_from_config(config: RiskConfig) -> RiskPolicy:
         low_risk_percent=Decimal(str(risks["low"])) / 100,
         medium_risk_percent=Decimal(str(risks["medium"])) / 100,
         high_risk_percent=Decimal(str(risks["high"])) / 100,
+        enforce_margin=config.enforce_margin,
     )

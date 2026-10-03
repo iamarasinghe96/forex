@@ -43,6 +43,9 @@ class RiskPolicy:
     low_risk_percent: Decimal
     medium_risk_percent: Decimal
     high_risk_percent: Decimal
+    # Cap volume so the account's margin (notional / account leverage, for all open positions plus
+    # the new one) fits within equity, as a real broker would. Off keeps the older paper sizing.
+    enforce_margin: bool = False
 
     implementation_version: ClassVar[str] = RISK_POLICY_IMPLEMENTATION_VERSION
 
@@ -67,7 +70,7 @@ class RiskPolicy:
     @property
     def policy_id(self) -> str:
         """Content-addressed identity of every setting that affects risk behaviour."""
-        canonical = json.dumps({
+        settings: dict[str, object] = {
             "daily_loss_limit": _canonical_decimal(self.daily_loss_limit),
             "high_conviction": _canonical_decimal(self.high_conviction),
             "high_risk_percent": _canonical_decimal(self.high_risk_percent),
@@ -79,7 +82,10 @@ class RiskPolicy:
             "medium_risk_percent": _canonical_decimal(self.medium_risk_percent),
             "minimum_conviction": _canonical_decimal(self.minimum_conviction),
             "minimum_reward_risk": _canonical_decimal(self.minimum_reward_risk),
-        }, sort_keys=True, separators=(",", ":"))
+        }
+        if self.enforce_margin:  # Only when on, so existing policy identities are unchanged.
+            settings["enforce_margin"] = True
+        canonical = json.dumps(settings, sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
         return f"{self.implementation_version}-{fingerprint}"
 
@@ -110,6 +116,7 @@ class RiskBlockReason(str, Enum):
     PORTFOLIO_RISK = "CONFIGURED_MAXIMUM_SIMULTANEOUS_RISK"
     CIRCUIT_BREAKER = "CONFIGURED_DAILY_LOSS_CIRCUIT_BREAKER"
     KILL_SWITCH = "KILL_SWITCH_ACTIVE"
+    INSUFFICIENT_MARGIN = "INSUFFICIENT_FREE_MARGIN_AT_ACCOUNT_LEVERAGE"
 
 
 @dataclass(frozen=True)
@@ -313,10 +320,25 @@ def minimum_objective(side: Side, entry: Decimal, stop: Decimal,
             else entry - policy.minimum_reward_risk * distance)
 
 
+def notional_per_lot(price: Decimal, tick_size: Decimal, tick_value: Decimal) -> Decimal:
+    """Account-currency value of one lot: a tick is worth tick_value, so price/tick_size ticks
+    is the whole position (e.g. 1.10 EURUSD with 1.5 AUD per 0.00001 tick is about A$165k)."""
+    return price / tick_size * tick_value
+
+
+def used_margin(positions: tuple[OpenRiskPosition, ...], leverage: int) -> Decimal:
+    """Margin held by open positions at the account leverage (valued at their entry prices)."""
+    if leverage <= 0:
+        return Decimal(0)
+    return sum((notional_per_lot(p.entry, p.tick_size, p.tick_value) * p.volume for p in positions),
+               Decimal(0)) / leverage
+
+
 def size_position(account: AccountState, spec: SymbolSpec, side: Side, entry: Decimal,
                   stop: Decimal, risk_percent: Decimal,
-                  policy: RiskPolicy, objective: Decimal | None = None) -> tuple[PositionRiskPlan | None,
-                                                             tuple[RiskBlockReason, ...]]:
+                  policy: RiskPolicy, objective: Decimal | None = None,
+                  margin_in_use: Decimal = Decimal(0)) -> tuple[PositionRiskPlan | None,
+                                                                tuple[RiskBlockReason, ...]]:
     if account.leverage > policy.max_leverage:
         return None, (RiskBlockReason.INVALID_LEVERAGE,)
     if (side is Side.LONG and stop >= entry) or (side is Side.SHORT and stop <= entry):
@@ -337,9 +359,17 @@ def size_position(account: AccountState, spec: SymbolSpec, side: Side, entry: De
     budget = account.balance * risk_percent
     raw = budget / loss_per_lot
     capped = min(raw, spec.volume_max)
+    margin_bound = False
+    if policy.enforce_margin:
+        free = account.equity - margin_in_use
+        if account.leverage <= 0 or free <= 0:
+            return None, (RiskBlockReason.INSUFFICIENT_MARGIN,)
+        affordable = free * account.leverage / notional_per_lot(entry, spec.tick_size, spec.tick_value)
+        margin_bound = affordable < capped
+        capped = min(capped, affordable)
     volume = (capped / spec.volume_step).to_integral_value(rounding=ROUND_FLOOR) * spec.volume_step
     if volume < spec.volume_min:
-        return None, (RiskBlockReason.VOLUME_BELOW_MINIMUM,)
+        return None, (RiskBlockReason.INSUFFICIENT_MARGIN if margin_bound else RiskBlockReason.VOLUME_BELOW_MINIMUM,)
     actual = volume * loss_per_lot
     if actual > budget:
         raise ArithmeticError("down-rounded broker volume exceeded risk budget")
@@ -420,8 +450,9 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
         status, reasons = DecisionStatus.SIGNAL_NOT_ELIGIBLE, (
             RiskBlockReason.CONVICTION_BELOW_MINIMUM,)
     else:
+        margin = used_margin(portfolio.positions, account.leverage) if policy.enforce_margin else Decimal(0)
         plan, reasons = size_position(account, spec, candidate.side, entry, stop,
-                                      tier.risk_percent, policy, objective)
+                                      tier.risk_percent, policy, objective, margin)
         status = DecisionStatus.ELIGIBLE if plan else DecisionStatus.HARD_RISK_BLOCK
         if plan is not None and len(portfolio.positions) >= policy.max_concurrent_positions:
             status, reasons = DecisionStatus.HARD_RISK_BLOCK, (RiskBlockReason.MAX_POSITIONS,)

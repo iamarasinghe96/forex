@@ -779,3 +779,34 @@ No settings change based on these runs.
    instead of broker-midnight H4 bars.
 3. Risk per trade: Codex recommends 0.25% for research-comparable paper and 0% real money until
    an edge is established; the current setting is 5%.
+
+### Operator decisions on the Codex findings (2026-10-03): margin yes, research H4 yes, risk stays 5%
+
+**1. Margin realism (`risk.enforce_margin: true`)**
+- `size_position` caps volume so that margin fits the account's free margin. Margin =
+  notional / account leverage; notional per lot = price / tick_size x tick_value. Open positions
+  count at their entry prices.
+- If even the minimum lot does not fit, the trade is blocked with
+  INSUFFICIENT_FREE_MARGIN_AT_ACCOUNT_LEVERAGE.
+- On A$1,000 at 30:1 the whole account can hold about A$30k notional. At 5% risk a 15-pip
+  EURUSD stop is cut from 0.22 to 0.18 lots (4.05% risk). A 20-pip stop uses about 90% of the
+  margin, so often only one or two trades fit at once, as on a real account.
+- No margin call or stop-out is simulated.
+- Policy identity changes only when the switch is on.
+
+**2. Research H4 bars (`market_data.h4_alignment_hour_utc: 0`)**
+- The paper bot no longer requests MT5 H4 candles. It builds H4 from the stored MT5 H1
+  candles with `history.aggregate_h4`, as the research databases were built: complete groups at
+  00/04/08/12/16/20 UTC.
+- MT5's H4 bars start at the broker's midnight (21:00/22:00 UTC).
+- `replay_decisions.py` and `scan_protections.py` now build H4 the same way. Older MT5 H4 rows
+  stay in the paper database, unused.
+- The settings version now includes the H4 rule, so learning scores restart. No trades closed
+  since the 119a87f deploy (weekend).
+- `scripts/data_coverage.py` prints the alignment recorded in each research database to
+  confirm 0.
+
+**3. Risk per trade:** stays at 5% (operator choice; Codex recommended 0.25% for research and
+0% real money).
+
+Tests: 249 passed; ruff clean; mypy shows only the two Windows-only msvcrt errors.

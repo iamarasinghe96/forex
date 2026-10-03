@@ -24,6 +24,7 @@ from pathlib import Path
 from forex.analysis import InsufficientDataError, analyse_market, prepare_candles
 from forex.config import AnalysisConfig, load_config
 from forex.domain import Candle, Timeframe
+from forex.history import aggregate_h4
 
 COST_PIPS = {"EURUSD": 0.9, "GBPUSD": 1.2, "USDJPY": 1.0}  # Same assumptions as the research scripts.
 ANALYSIS_VARIANTS: dict[str, dict[str, object]] = {
@@ -63,12 +64,12 @@ def load(db_path: Path, stored: str, symbol: str, timeframe: Timeframe) -> list[
             for r in rows]
 
 
-def replay(job: tuple[str, str, str, Path, str, datetime, datetime]) -> tuple[str, str, list[Hour]]:
-    variant, symbol, stored, db_path, config_json, since, until = job
+def replay(job: tuple[str, str, str, Path, str, datetime, datetime, int]) -> tuple[str, str, list[Hour]]:
+    variant, symbol, stored, db_path, config_json, since, until, alignment = job
     config = AnalysisConfig.model_validate_json(config_json)
     h1 = load(db_path, stored, symbol, Timeframe.H1)
     p1 = prepare_candles(h1, config)
-    p4 = prepare_candles(load(db_path, stored, symbol, Timeframe.H4), config)
+    p4 = prepare_candles(aggregate_h4(h1, alignment), config)  # As the paper bot builds them.
     hours: list[Hour] = []
     for candle in h1:
         if not since <= candle.timestamp_utc < until:
@@ -193,7 +194,8 @@ def main() -> int:
         if match:
             symbols[symbol.upper()] = match
     jobs = [(name, symbol, stored_name, args.db,
-             config.analysis.model_copy(update=changes).model_dump_json(), since, until)
+             config.analysis.model_copy(update=changes).model_dump_json(), since, until,
+             config.market_data.h4_alignment_hour_utc)
             for name, changes in ANALYSIS_VARIANTS.items() for symbol, stored_name in symbols.items()]
     print(f"Replaying {len(jobs)} variant/pair combinations from {since:%Y-%m-%d} "
           f"(balance A${balance:.0f}); this can take several minutes...", flush=True)

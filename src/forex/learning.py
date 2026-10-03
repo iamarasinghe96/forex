@@ -127,10 +127,12 @@ def trade_facts(trade_id: str, payload: Mapping[str, Any]) -> TradeFacts | None:
 def strategy_version(config: AppConfig) -> str:
     """Short fingerprint of the settings that decide which trades are taken and how they exit.
 
-    Risk percent and learning settings are left out: R results do not depend on them.
+    Includes how H4 bars are built. Risk percent and learning settings are left out: R results
+    do not depend on them.
     """
     settings = knobs(config)
-    raw = json.dumps({"analysis": settings["analysis"], "exits": settings["exits"]}, sort_keys=True)
+    raw = json.dumps({"analysis": settings["analysis"], "exits": settings["exits"],
+                      "h4_bars": f"fixed-utc-{config.market_data.h4_alignment_hour_utc}"}, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:8]
 
 

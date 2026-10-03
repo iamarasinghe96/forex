@@ -101,9 +101,10 @@ def test_available_context_is_graded_not_unanimity() -> None:
         risk_tier(D("101"), POLICY)
 
 
-# The operator's aggressive paper profile in config.yaml (2026-10-01); POLICY stays the fixture.
+# The operator's aggressive paper profile in config.yaml (2026-10-01; margin realism 2026-10-03);
+# POLICY stays the fixture.
 OPERATOR_POLICY = replace(POLICY, daily_loss_limit=D(".25"), minimum_conviction=D("0"),
-                          low_risk_percent=D(".05"), medium_risk_percent=D(".05"))
+                          low_risk_percent=D(".05"), medium_risk_percent=D(".05"), enforce_margin=True)
 
 
 def test_config_is_exact_policy_source_and_changed_policy_changes_calculation() -> None:

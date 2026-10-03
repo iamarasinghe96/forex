@@ -18,6 +18,7 @@ from pathlib import Path
 from forex.analysis import analyse_market, prepare_candles
 from forex.config import load_config
 from forex.domain import Candle, Timeframe
+from forex.history import aggregate_h4
 
 
 def load(db: sqlite3.Connection, stored_symbol: str, symbol: str, timeframe: Timeframe) -> list[Candle]:
@@ -77,7 +78,7 @@ def main() -> int:
             print(f"\n=== {symbol}: no stored candles ===")
             continue
         h1 = load(db, match, symbol, Timeframe.H1)
-        h4 = load(db, match, symbol, Timeframe.H4)
+        h4 = aggregate_h4(h1, config.market_data.h4_alignment_hour_utc)  # As the paper bot builds them.
         p1, p4 = prepare_candles(h1, config.analysis), prepare_candles(h4, config.analysis)
         days: dict[str, Counter[str]] = defaultdict(Counter)
         moves: dict[str, list[float]] = {}

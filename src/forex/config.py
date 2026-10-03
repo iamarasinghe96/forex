@@ -57,6 +57,10 @@ class MarketDataConfig(BaseModel):
     history_chunk_days: int = Field(default=90, ge=7, le=366)
     history_retry_count: int = Field(default=3, ge=1, le=10)
     server_clock_tolerance_seconds: int = Field(default=300, gt=0, le=3600)
+    # The paper bot builds H4 bars from H1 on these fixed UTC boundaries (0 = 00, 04, 08 ... UTC),
+    # exactly like the research databases (`forex import-history`, default 0). MT5's own H4 bars
+    # start at the broker's midnight (21:00/22:00 UTC) and would differ from everything tested.
+    h4_alignment_hour_utc: int = Field(default=0, ge=0, le=3)
 
 
 class AnalysisConfig(BaseModel):
@@ -140,6 +144,8 @@ class RiskConfig(BaseModel):
     conviction_risk_percent: dict[str, float]
     conviction_thresholds: dict[str, float]
     target_trades_per_week: dict[str, int]
+    # Size trades so their margin (notional / account leverage) fits the account's free margin.
+    enforce_margin: bool = True
 
     @model_validator(mode="after")
     def valid_conviction_policy(self) -> RiskConfig:
