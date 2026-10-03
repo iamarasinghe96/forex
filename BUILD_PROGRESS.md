@@ -668,3 +668,41 @@ Learning loop:
 Deployed to the VPS on 2026-10-03 (Saturday, market closed): C:\forex moved from 0a4ac35 to
 119a87f. Paper DB backed up to C:\forex\backup first; no halt latch; 235 tests passed on Windows.
 This also brings PR #19 trailing, the held-pair ATR refresh and the weekend notice to the VPS.
+
+### Pre-registration 4: classic swing-structure rules (recorded 2026-10-03, before any real data run)
+
+Background and mapping to the bot: docs/SWING_TRADING_REVIEW.md. Script:
+scripts/swing_structure.py, verified only on hand-built and random-walk data.
+
+**Rules, fixed:**
+- Swing points are 2-bar fractals.
+- Trend: the last two swing highs and the last two swing lows both rising (or both falling).
+- Consolidation: the 10 bars before the signal span at most 3 x ATR(14).
+- Entry: a close beyond the consolidation in the trend direction.
+- Stop: the far side of the consolidation, at least 1 x ATR away.
+- Exit: the stop trails to each new confirmed swing low (high). No target.
+- Costs: round trip 0.9/1.2/1.0 pips; one trade per pair.
+
+**Primary test (decides PASS/FAIL): H4 bars, EURUSD/GBPUSD/USDJPY.**
+- P1: 2012-04-01 to 2019-01-01.
+- P2: 2019-01-01 to the end of the data. This includes the 2025-26 holdout that was consumed
+  for the old strategy; it is unseen for these rules.
+
+**PASS only if every condition holds in both periods:**
+- at least 100 closed trades;
+- mean net R > 0;
+- no more than 5% of 1,000 matched random controls (seeds 2026100400+) reach the strategy's
+  mean R.
+
+**Secondary, reported only (cannot rescue a FAIL):**
+- D1 bars (UTC days from H4);
+- costs x2 on H4;
+- per-pair and per-year breakdowns;
+- R per year compared with the current strategy's causal replay. The current strategy made
+  +11.2 R over 2012-04 to 2018 (about 1.7 R/yr) and +13.4 R over 2021-2025 (about 2.9 R/yr).
+
+**After the results:**
+- No parameter is changed after seeing results.
+- A FAIL is recorded as a FAIL.
+- A PASS makes the rules a candidate for a separate paper strategy, not a replacement for real
+  money.
