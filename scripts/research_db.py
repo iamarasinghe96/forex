@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from forex.domain import Candle, Timeframe
@@ -39,3 +39,35 @@ def require_data(database: str | Path, symbols: list[str]) -> None:
         contents = ", ".join(f"{s} {t}: {n}" for (s, t), n in sorted(found.items())) or "no candles"
         raise SystemExit(f"{database} has no rows for {missing}. It contains: {contents}")
     print(f"{database}: " + ", ".join(f"{s} {t} {n}" for (s, t), n in sorted(found.items())), flush=True)
+
+
+def missing_trading_hours(before: datetime, after: datetime) -> int:
+    """Weekday trading hours absent between two consecutive H1 bars (weekends excluded with the
+    same rule as `forex verify-history`)."""
+    from forex.config import MarketDataConfig
+    from forex.market_data import _in_weekend
+
+    config = MarketDataConfig()
+    hours = int((after - before) / timedelta(hours=1)) - 1
+    return sum(not _in_weekend(before + timedelta(hours=k), config) for k in range(1, hours + 1))
+
+
+def segments(candles: list[Candle], max_gap_hours: int) -> list[list[Candle]]:
+    """Split H1 candles wherever at least ``max_gap_hours`` weekday trading hours are missing.
+
+    Indicators must restart after such a hole and no simulated trade may span it: prices during
+    the hole are unknown, so a stop or target inside it cannot be observed.
+    """
+    out: list[list[Candle]] = []
+    current: list[Candle] = []
+    for candle in candles:
+        if current:
+            elapsed = int((candle.timestamp_utc - current[-1].timestamp_utc) / timedelta(hours=1)) - 1
+            if elapsed >= max_gap_hours and missing_trading_hours(
+                    current[-1].timestamp_utc, candle.timestamp_utc) >= max_gap_hours:
+                out.append(current)
+                current = []
+        current.append(candle)
+    if current:
+        out.append(current)
+    return out

@@ -124,3 +124,63 @@ Verdict:
 +0.006% (95% CI -0.31 to +0.34) -> **FAIL / inconclusive**. Under cost and financing stress -0.78%/yr.
 USDJPY dominates and 2022 alone contributed +11.2%. Three USD-correlated pairs are too few
 independent bets (gap 3 above); not adopted.
+
+## Round 2 (2026-10-03): Codex deep-research audit, checked against the code
+
+Codex ran in a read-only worktree at f7a8def against the operator's databases. It worked around
+a missing `pydantic_settings` package in memory, which affects only the import of the unused
+Secrets class.
+
+**New results (Codex runs; old replay semantics, before the fixes below)**
+- Pre-registration 4 (swing structure, H4): **FAIL in both periods.**
+  - 2012-2018: 436 trades, -0.005 R; random controls ranked 0.40.
+  - 2019-2026: 511 trades, about 0.000 R; controls ranked 0.57.
+  - D1 (secondary): -0.034 and -0.219 R.
+- Live settings (10R target, 3xATR trail, conviction 0): +0.043 R (807 trades) in 2012-2018,
+  +0.065 R (681) in 2021-2025, +0.017 R (125) in 2025-09 to 2026-09, where 2x costs give
+  -0.002 R. USDJPY made +46.0 R of +34.5 R and +48.4 R of +44.4 R in the two development
+  periods, then -4.5 R in the last year. These settings were chosen after seeing those
+  periods, so this is not evidence.
+
+**Verdicts**
+
+| # | Codex claim | Verdict | Check |
+|---|---|---|---|
+| 1 | Early database misses whole months | **Plausible, unverified here** (data is on the operator PC) | Normalisation checks order and uniqueness, not completeness. `forex verify-history` counts unexplained gaps but nothing acted on them. Added `scripts/data_coverage.py` (read-only). |
+| 2 | Random controls not matched (regime, trade count, stop width / cost per R) | **TRUE** | `analyse_pair` gave every biased hour a direction regardless of regime, and rates were per pair x session only. Codex's figures imply about 0.015 R cost per strategy trade vs 0.06 R per control trade. Before costs the advantage was only about +0.025 R per trade, within noise. **My earlier "+0.09 R timing advantage" was mostly cost efficiency (wider stops), not direction skill.** |
+| 3 | Replay trailing differs from the live rule | **TRUE**, plus a difference Codex missed | Live trails from the best polled price (about the bar high); the replay used the bar close and kept trailing below +1R. |
+| 4 | Fill timing and account effects differ between engines | TRUE, low impact for signal research | FX is continuous, so close and next open match except over weekends. A full account simulation is a separate need. |
+| 5 | Bid-only data cannot trigger short stops on the ask | TRUE | Shorts stop out later in the replay than in reality, by about spread / stop width. Needs bid/ask history or measured spreads (cost recorder). |
+| 6 | Intrabar order unknown | TRUE (known) | Low. |
+| 7 | Old backtest fills gapped stops at the stop | TRUE (already recorded) | The causal replay fills at the open. |
+| 8 | Swap missing; cost_report uses the latest rate | TRUE (documented as an estimate) | Open. |
+| 9 | Clock "double shift" | **FALSE** | Every bot start runs `validate_live_server_timestamp`, which checks that MT5 times are server wall time GMT+2/+3 within 300 s. It passes, so the UTC conversion is right. The real issue Codex hinted at is alignment: live H4 bars come from MT5 aligned to server midnight (UTC 21/01/05... or 22/02/06...). Research H4 bars use fixed UTC 00/04/08... (import default 0). The live H4 regime is computed on bars shifted 1-2 hours. |
+| 10 | No look-ahead found | Agrees with the random-walk checks | Information. |
+| 11 | AI review cannot be backtested | TRUE (known) | Forward shadow only. |
+| 12 | Periods reused, holdout consumed | TRUE (recorded) | Fresh pairs and future data needed. |
+| 13 | USDJPY concentration | **TRUE** | EURUSD + GBPUSD combined lost in every replay so far, under both baseline and live settings. |
+| 14 | Learning scores omit swap, overlap, version hashes a subset | Partly | Versions hash analysis and exits by design; code and AI-review changes are not captured. Low. |
+| 15 | No margin ledger in paper; leverage check is account-level only | **TRUE** | `size_position` only compares the account's leverage setting. At 5% risk a 15-pip EURUSD stop needs about 0.22 lots (about A$38k notional, 38:1) on A$1,000. A real 30:1 account would refuse it. |
+| 16 | Swing CI is iid; open trades excluded | TRUE, minor | The FAIL is clear regardless. |
+| 17 | slow_momentum double-charges costs and compresses gaps | TRUE, immaterial | Total cost is about 0.06%/yr, so the error is about 0.03%/yr. The FAIL stands. |
+
+Literature spot-checked: Hutchinson et al. 2022 (IRFA 102245: out-of-sample Sharpe of carry,
+momentum and value falls from +0.39 to -0.32) and Breedon & Ranaldo 2013 (EURUSD falls in
+European hours and rises in US hours) exist and are summarised correctly.
+
+**Fixed in scripts/causal_replay.py (research only; the live bot is unchanged)**
+1. Data holes: history is split at 48+ missing weekday hours; indicators restart; trades
+   spanning a hole are censored.
+2. Exits: stops move through the live `protective_stop`, fed each bar's best price.
+3. Matched controls (primary):
+   - same H4 trend regime;
+   - stop width inside the strategy's range;
+   - rate per pair x session x stop-width quintile.
+
+   The old broad controls are kept for comparison.
+4. Output adds gross, net and 2x-cost results, month-block bootstrap CIs, long/short, and
+   results excluding JPY.
+
+Verified on a synthetic random-walk database with a 4-day hole (tests/test_causal_replay.py and
+a full run). No edge appears. Matched controls take 97 trades vs the strategy's 95 and pay
+0.012 vs 0.011 R cost per trade, against 0.055 R for broad controls.

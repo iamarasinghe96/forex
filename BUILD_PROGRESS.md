@@ -706,3 +706,76 @@ scripts/swing_structure.py, verified only on hand-built and random-walk data.
 - A FAIL is recorded as a FAIL.
 - A PASS makes the rules a candidate for a separate paper strategy, not a replacement for real
   money.
+
+### Result of pre-registration 4, live-settings replay, and corrections (2026-10-03)
+
+Run by Codex (read-only, operator PC, commit f7a8def); verdicts in
+docs/CODEX_REVIEW_FACTCHECK.md "Round 2".
+
+**Pre-registration 4 (swing structure): FAIL.**
+
+| Period | Trades | Net R/trade | Controls ranked |
+|---|---|---|---|
+| H4 2012-2018 | 436 | -0.005 | 0.40 |
+| H4 2019-2026 | 511 | about 0.000 | 0.57 |
+
+The pass required controls ranked at or below 0.05. D1 (secondary): -0.034 and -0.219 R.
+Classic swing rules are not adopted.
+
+**Live settings, replayed with the old replay semantics.**
+
+| Period | Trades | Net R/trade | At 2x costs |
+|---|---|---|---|
+| 2012-2018 | 807 | +0.043 | |
+| 2021-2025 | 681 | +0.065 | |
+| 2025-09 to 2026-09 | 125 | +0.017 | -0.002 |
+
+USDJPY alone exceeded the total in both development periods. These settings were chosen after
+seeing those periods.
+
+**Correction to "Causal replay, random-entry controls..." above.**
+- The controls were not matched on regime or stop width. Their cost per R was about 4x the
+  strategy's.
+- Before costs, the strategy's advantage is about +0.025 R/trade (within noise), not +0.09 R.
+- The entry logic's skill is unproven. Most of the measured advantage was cost efficiency.
+- causal_replay.py is fixed: matched controls, the live stop rule, data-hole segmentation,
+  and gross/net output. The bot's /review prompt is corrected.
+
+### Pre-registration 5: replication with the corrected replay (recorded 2026-10-03, before any run)
+
+**Steps:**
+1. Run `scripts/data_coverage.py` on both databases. Any 48+ hour gap inside a test period is
+   re-downloaded and the database rebuilt first. Where that is impossible, the replay censors
+   trades across the hole, and the count is reported.
+2. Run R-A, the baseline research settings:
+   `--profile baseline --min-conviction 55 --target-r 1.5` (break-even at 1R, no trail).
+3. Run R-B, the live settings:
+   `--profile config --min-conviction 0 --target-r 10 --trail-atr 3`.
+
+**Periods:**
+- P1: 2012-04-01 to 2019-01-01.
+- P2: 2021-01-01 to 2025-09-28 (development data).
+- P3: 2025-09-28 to the end of the data (reused; information only).
+
+1,000 controls; seeds fixed by the script.
+
+**Questions and pass rules (P1 and P2 both required):**
+- Q1, direction skill: matched controls (gross) share at or above the strategy's mean R ≤ 0.05.
+- Q2, profitable signal: net mean R at 2x costs > 0.
+- Q3, not only USDJPY: net mean R excluding JPY pairs > 0.
+
+**Interpretation, fixed now:**
+- Q2 yes but Q1 no: the profit is trend-direction exposure plus cost efficiency, and the hourly
+  entry logic adds nothing. Simplify rather than tune.
+- Q3 no: USDJPY concentration. Test on new pairs before any further conclusion.
+
+No settings change based on these runs.
+
+### Pending operator decisions (live paper bot unchanged)
+
+1. Margin realism: paper sizing ignores notional margin, so some 5% trades are impossible on a
+   real A$1,000 30:1 account.
+2. H4 alignment: build live H4 bars from MT5 H1 with fixed UTC boundaries, as in research,
+   instead of broker-midnight H4 bars.
+3. Risk per trade: Codex recommends 0.25% for research-comparable paper and 0% real money until
+   an edge is established; the current setting is 5%.

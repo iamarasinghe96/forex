@@ -59,3 +59,19 @@ any real data:
   pattern never beats the controls (no look-ahead).
 
 Pre-registration and results: BUILD_PROGRESS.md, "Pre-registration 4".
+
+## Result (2026-10-03): FAIL
+
+Run by Codex on the operator's databases, script unchanged.
+
+| Bars | Period | Trades | Net R/trade | Controls ranked |
+|---|---|---|---|---|
+| H4 | 2012-2018 | 436 | -0.005 | 0.40 |
+| H4 | 2019-2026 | 511 | about 0.000 | 0.57 |
+| D1 | 2012-2018 | 86 | -0.034 | |
+| D1 | 2019-2026 | 106 | -0.219 | |
+
+The textbook rules show no edge on these three pairs. The pattern's entries did no better than
+random entries in the same trend with the same stop and exit. The databases may have missing
+months (to be checked with scripts/data_coverage.py), but a result this close to zero is very
+unlikely to reach the pass bar on complete data.

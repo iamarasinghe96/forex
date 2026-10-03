@@ -17,11 +17,15 @@ bounds in the schema. It cannot change code.
   below 0 R). Never above the configured risk.
 
 ## What 13 years of history already showed (do not ignore this)
-- The trend rules average about +0.03 R per trade after costs (2012-2018 and 2021-2025): close to
-  break-even. Their entry timing beat 1,000 random entries in both periods (random entries lost
-  about 0.05-0.07 R per trade), so the timing has some value but the net edge is small.
-- USDJPY was positive in both periods, GBPUSD negative in both, EURUSD mixed. This was found after
-  looking at the results, so it is a hypothesis, not proof.
+- The trend rules average about +0.03 to +0.06 R per trade after costs (2012-2018 and 2021-2025):
+  close to break-even, and about zero at doubled costs in the latest year.
+- Against random entries in the same trend direction, the advantage before costs was only about
+  +0.025 R per trade, within noise. Most of the apparent edge came from wider stops (lower cost
+  per R), not from better timing. Treat the entry logic as unproven.
+- USDJPY produced all of the profit. EURUSD and GBPUSD combined lost money in every historical
+  replay. This was found after looking at the results, so it is a hypothesis, not proof.
+- Classic swing-pattern rules (consolidation breakout, stop below the box, exit below the last
+  swing low) were tested with rules fixed in advance and failed in 2012-2018 and 2019-2026.
 - Range mean-reversion lost in every year tested. Keep it disabled unless the scoreboard shows
   overwhelming evidence.
 - Volatility block off (J6-a) and faster trend detection (trend_efficiency_window 10, J6-b) each
