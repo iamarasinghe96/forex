@@ -850,3 +850,44 @@ AUDUSD/USDCAD/USDCHF/NZDUSD/EURJPY/GBPJPY history for the unseen-pair confirmati
 Deployed to the VPS on 2026-10-04 (market closed): C:\forex at 6202416, clean tree, 259 passed and
 1 skipped (scikit-learn not installed, as intended). Includes the margin cap, research-aligned H4
 bars and shadow setup scoring with no model loaded.
+
+### Data coverage and pre-registration 5, period P2 (2021-01-01 to 2025-09-28), 2026-10-04
+
+**Coverage (scripts/data_coverage.py, operator PC):**
+- Both research databases build H4 bars on fixed UTC boundary hour 0, matching the paper bot.
+- 2019-2026 is complete apart from New Year holidays.
+- 2012-2018: EURUSD is complete. Whole months are missing for GBPUSD (2012-05, 2013-08,
+  2013-09, 2014-07, 2017-10, 2018-11) and USDJPY (2012-05, 2012-08, 2016-12). Codex's claim is
+  confirmed. Likely cause: empty monthly responses during the download.
+
+**R-A, baseline research settings.**
+- Strategy: 322 trades. Net +0.039 R, 2x costs +0.024 R, gross +0.055 R. Month-block 95% CI on
+  net: [-0.087, +0.166].
+- By pair: USDJPY +34.2 R; EURUSD -12.8 R; GBPUSD -8.8 R. Excluding JPY: -0.110 R/trade.
+- By side: longs +0.103 R, shorts -0.049 R.
+- Matched controls: net +0.003 R; gross +0.019 R (share at or above strategy 0.176). Broad
+  controls net: share 0.055, the earlier "beats random" figure.
+
+**R-B, live settings.**
+- Strategy: 728 trades. Net +0.055 R, 2x costs +0.040 R, gross +0.071 R. CI on net:
+  [-0.043, +0.150].
+- By pair: USDJPY +45.1 R; EURUSD +0.1 R; GBPUSD -4.8 R. Excluding JPY: -0.010 R/trade.
+- By side: longs +0.106 R, shorts -0.015 R.
+- **Matched controls: net +0.087 R, gross +0.104 R. Random entries in the same trend regimes,
+  with the same stops and exits, did better than the strategy (share 0.93-0.94).**
+
+**Verdict for P2:**
+- Q1 (direction skill): FAIL in both runs.
+- Q2 (net at 2x costs > 0): yes in both.
+- Q3 (excluding JPY > 0): FAIL in both.
+
+Q1 and Q3 must pass in both periods, so they cannot pass overall whatever P1 shows. The P1 run
+is optional and informational: it needs the missing months re-downloaded, or it runs with
+censoring.
+
+**Pre-registered interpretation applies:**
+- The profit is H4 trend-direction exposure with wide stops and the trailing exit, concentrated
+  in USDJPY longs.
+- The hourly entry logic adds nothing; under live settings it is worse than random timing.
+- Simplify rather than tune. Test on new pairs before any further conclusion.
+- No live setting is changed by this result.
