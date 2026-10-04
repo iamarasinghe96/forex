@@ -847,3 +847,6 @@ gives 259 passed, 1 skipped. Ruff clean; mypy only the two Windows-only errors.
 
 No historical model exists yet. Acceptance needs the research databases plus downloaded
 AUDUSD/USDCAD/USDCHF/NZDUSD/EURJPY/GBPJPY history for the unseen-pair confirmation.
+Deployed to the VPS on 2026-10-04 (market closed): C:\forex at 6202416, clean tree, 259 passed and
+1 skipped (scikit-learn not installed, as intended). Includes the margin cap, research-aligned H4
+bars and shadow setup scoring with no model loaded.
