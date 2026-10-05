@@ -918,3 +918,6 @@ censoring.
 
 Tests: 273 passed with training extras; a clean VPS-like environment gives 263 passed, 1 skipped.
 Dashboard: 11 node tests pass and the build succeeds.
+Deployed to the VPS on 2026-10-05: C:\forex at 5345525, 263 passed and 1 skipped. Includes the
+dashboard chart publisher; the dashboard itself was published by the Pages workflow (build and
+deploy succeeded).
