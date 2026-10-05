@@ -8,7 +8,7 @@ test('all filter dimensions apply together',()=>{const e=event('1');assert.equal
 test('Australian financial year rolls over at Sydney midnight',()=>{assert.equal(financialYear('2026-06-30T13:59:00Z'),'2025–2026');assert.equal(financialYear('2026-06-30T14:00:00Z'),'2026–2027');});
 test('CSV includes payload and neutralizes spreadsheet formulas',()=>{const csv=evidenceCSV([{...event('1'),entity_id:'=HYPERLINK("bad")'}]);assert.ok(csv.includes("'=HYPERLINK"));assert.ok(csv.includes('pnl_aud'));});
 test('unknown future and old heartbeat are not healthy',()=>{const now=Date.parse('2026-01-01T00:00:00Z');assert.equal(stale(null,now),true);assert.equal(stale('2025-12-31T23:57:00Z',now),true);assert.equal(stale('2026-01-01T00:00:01Z',now),true);assert.equal(stale('2025-12-31T23:59:00Z',now),false);});
-import {simpleSummary,botState,periodStart} from '../src/model.js';
+import {simpleSummary,botState,periodStart,openPnl,chartModel,spreadLabels,priceDigits} from '../src/model.js';
 const closed=(pnl,at)=>({kind:'trade_closed',observed_at_utc:at,payload:{pnl_aud:pnl,closed_at_utc:at,symbol:'USDJPY.a',direction:'LONG'}});
 test('simple summary counts wins, losses and profit inside the chosen period',()=>{
   const now=Date.parse('2026-10-10T00:00:00Z');
@@ -34,4 +34,24 @@ test('trades from an earlier paper account are not counted after a fresh start',
   const s=simpleSummary(trades,{latest_balance:'1012',realized_pnl_aud:'12',first_event_at_utc:'2026-10-01T10:00:00+00:00'},'all',now);
   assert.equal(s.invested,1000);assert.equal(s.trades,1);assert.equal(s.profit,12);assert.equal(s.lost,0);
   assert.equal(simpleSummary(trades,{latest_balance:'1012',realized_pnl_aud:'12',first_event_at_utc:'2026-10-01T10:00:00+00:00'},'7',now).trades,1);
+});
+
+test('open trades: total live P&L, unknown values, and chart geometry', () => {
+  const summary = {latest_health: {positions: [{unrealized_pnl_aud: '12.40'}, {unrealized_pnl_aud: '-3.10'}]}};
+  assert.ok(Math.abs(openPnl(summary) - 9.3) < 1e-9);
+  assert.equal(openPnl({}), 0);
+  assert.equal(openPnl({latest_health: {positions: [{unrealized_pnl_aud: null}]}}), null);
+  const t0 = Date.parse('2026-10-05T00:00:00Z') / 1000;
+  const bars = {t: [0, 1, 2, 3].map(i => t0 + i * 3600), h: [1.101, 1.103, 1.104, 1.106], l: [1.099, 1.1, 1.102, 1.103], c: [1.1, 1.102, 1.103, 1.105]};
+  const chart = {symbol: 'EURUSD.a', side: 'LONG', entry: 1.1, stop: 1.098, initial_stop: 1.098, target: 1.12, opened_at_utc: '2026-10-05T01:00:00+00:00', bars};
+  const m = chartModel(chart, {market_price: '1.1052'});
+  assert.equal(m.targetOff, 'above');                  // The 10R target is far away: labelled, not drawn.
+  assert.ok(m.entry.x > m.points[0][0] && m.entry.x < m.points.at(-1)[0]);
+  const stop = m.lines.find(l => l.kind === 'stop'), entry = m.lines.find(l => l.kind === 'entry');
+  assert.ok(stop.y > entry.y);                         // Below the entry on screen for a buy.
+  assert.equal(m.digits, 5);
+  assert.equal(chartModel({...chart, bars: {t: []}}, null), null);
+  const spread = spreadLabels([{y: 50}, {y: 52}, {y: 53}], 15, 10, 200).map(i => i.labelY);
+  assert.deepEqual(spread, [50, 65, 80]);
+  assert.equal(priceDigits('USDJPY.a'), 3);
 });

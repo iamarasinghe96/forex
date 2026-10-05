@@ -39,6 +39,12 @@ Security verification: local Firestore emulator tests passed for operator/strang
 Simple view (default): bot running/stopped, a period dropdown (24 hours to all time) with the
 Sydney date range, invested amount (current balance minus all-time recorded P&L), profit, trades
 made, won and lost, open trades and the latest ten closed trades. It reads `trade_closed` events
-with a single-field `kind` query plus the `aggregates/all` summary. The earlier detailed operator
+with a single-field `kind` query plus the `aggregates/all` summary. Open trades (2026-10-05): tiles for open-trade
+P&L (sum of the latest snapshot's unrealized P&L) and equity if closed now; each open trade shows
+its entry time, entry and current price, R multiple, stop and target, and an hourly price chart
+(`src/chart.js`): close line with each hour's high-low range, the entry point, current and first
+stop, target (or an off-chart note), the latest price, a hover/tap readout and a table view. The
+chart reads `modes/<mode>/aggregates/chart`, which the bot publishes hourly and whenever the set
+of open trades changes; the levels come from the live snapshot. The earlier detailed operator
 view is kept under "Technical details". Until PR #18 is reviewed and merged, the workflow also
 publishes from `claude/determined-thompson-f4ewei` (the reviewed branch running on the VPS).

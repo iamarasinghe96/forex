@@ -891,3 +891,30 @@ censoring.
 - The hourly entry logic adds nothing; under live settings it is worse than random timing.
 - Simplify rather than tune. Test on new pairs before any further conclusion.
 - No live setting is changed by this result.
+
+### Dashboard: open-trade P&L and price charts (2026-10-05)
+
+**Bot:**
+- Health snapshots now include each open trade's opening time, initial stop and open R
+  multiple.
+- A new `position_chart` journal event is published hourly, and whenever the set of open
+  trades changes. It carries each open trade's H1 bars from 24 hours before entry, at most
+  240 bars.
+- The Firestore mirror keeps the latest chart in `modes/PAPER/aggregates/chart`, as parallel
+  arrays with no nested arrays. Operator read rules already cover it.
+- Chart failures are logged and never interrupt trading. Nothing is published while halted.
+
+**Dashboard (dashboard/src/chart.js, model.js):**
+- New "Open trades P&L" and "Equity if closed now" tiles.
+- Each open trade shows its facts and an SVG chart:
+  - close line and high-low ranges;
+  - entry dot, solid stop and dotted first stop, dashed target or an off-chart note, current
+    price dot;
+  - direct labels that never overlap, and a hover/tap crosshair readout;
+  - a plain-English key and a table view.
+- The chart is sized to the screen. Status red and green are never the only cue (line style
+  and text labels).
+- Checked visually at desktop and phone widths with sample data.
+
+Tests: 273 passed with training extras; a clean VPS-like environment gives 263 passed, 1 skipped.
+Dashboard: 11 node tests pass and the build succeeds.

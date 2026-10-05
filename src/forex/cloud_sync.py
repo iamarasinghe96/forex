@@ -166,6 +166,9 @@ class FirestoreMirror:
         batch.set(root.collection("aggregates").document("all"), dict(summary))
         batch.set(root.collection("aggregates").document(event.observed_at_utc.date().isoformat()),
                   dict(daily))
+        if event.kind == "position_chart":  # The dashboard reads the latest chart from one document.
+            batch.set(root.collection("aggregates").document("chart"),
+                      firestore_safe(json_value({**event.payload, "sequence": event.sequence})))
         batch.commit()
 
     def fingerprint(self, mode: str, event_id: str) -> str | None:

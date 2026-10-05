@@ -49,6 +49,9 @@ from forex.risk_policy import policy_from_config
 from forex.scoring import ScoreModel, SetupFeatures, strategy_signature
 from forex.serialization import canonical_json, json_value
 
+CHART_HOURS_BEFORE_ENTRY = 24  # Context shown before a trade's entry on the dashboard chart.
+CHART_MAX_HOURS = 240          # At most ten days of hourly bars per open trade.
+
 
 def paper_session_id(now: datetime, config: ExecutionConfig) -> str:
     """Label the risk day by its opening date; NY close follows US DST rules."""
@@ -126,6 +129,7 @@ class PaperRuntime:
         self.atr_updated: dict[str, datetime] = {}  # Broker symbol -> when its ATR was last computed.
         # When each pair's quote went quiet (e.g. the daily rollover); entries pause meanwhile.
         self.stale_since: dict[str, datetime] = {}
+        self.chart_key: tuple[datetime, tuple[str, ...]] | None = None  # Last published position chart.
         self.last_health_journal: tuple[datetime, str] | None = None
         # (error type, failing since, last reported or None, consecutive failed cycles)
         self.failure: tuple[str, datetime, datetime | None, int] | None = None
@@ -221,6 +225,39 @@ class PaperRuntime:
                 raise OperatorError(f"Setup sizing blocked: {exc}") from exc
             logging.getLogger("forex.paper").warning("Setup shadow model unavailable (%s)", type(exc).__name__)
 
+    def publish_position_chart(self, now: datetime) -> None:
+        """Hourly price history of each open trade for the dashboard chart (and whenever the set of
+        open trades changes). Display only; a failure never interrupts trading."""
+        try:
+            positions = self.paper.positions()
+            hour = now.replace(minute=0, second=0, microsecond=0)
+            key = (hour, tuple(sorted(p.client_id for p in positions)))
+            if key == self.chart_key:
+                return
+            openings = self.paper.openings()
+            charts = []
+            for p in positions:
+                opened_at = datetime.fromisoformat(openings[p.client_id][0]) if p.client_id in openings else now
+                start = max(opened_at - timedelta(hours=CHART_HOURS_BEFORE_ENTRY), now - timedelta(hours=CHART_MAX_HOURS))
+                pair = p.symbol.upper().split(".")[0]
+                bars = closed_candles(self.feed.candles(pair, Timeframe.H1, start, now), now)
+                charts.append({
+                    "client_id": p.client_id, "symbol": p.symbol, "side": p.side.value,
+                    "entry": float(p.entry), "stop": float(p.stop), "target": float(p.target),
+                    "initial_stop": float(openings.get(p.client_id, ("", p.stop))[1]),
+                    "opened_at_utc": opened_at.isoformat(),
+                    # Parallel arrays (Firestore rejects arrays inside arrays): bar open time, high, low, close.
+                    "bars": {"t": [int(c.timestamp_utc.timestamp()) for c in bars],
+                             "h": [float(c.high) for c in bars], "l": [float(c.low) for c in bars],
+                             "c": [float(c.close) for c in bars]},
+                })
+            identity = "chart:" + now.isoformat() + ":" + hashlib.sha256("|".join(key[1]).encode()).hexdigest()[:12]
+            self.emit("position_chart", identity, {"generated_at_utc": now, "positions": charts}, now)
+            self.chart_key = key
+        except Exception as exc:  # noqa: BLE001 - the chart is display only
+            logging.getLogger("forex.paper").warning("Position chart update failed (%s); trading continues.",
+                                                     type(exc).__name__)
+
     def record_costs(self, snaps: dict[str, Any], now: datetime) -> None:
         """Sample live spreads and swap rates for scripts/cost_report.py; never interrupts trading."""
         try:
@@ -288,6 +325,8 @@ class PaperRuntime:
         self.paper.manage(now, atr_by_symbol=self.trailing_atr,
                           atr_multiple=Decimal(str(trail)) if trail is not None else None)
         self.paper.journal_fills(self.journal)
+        if not self.config.paper.halt_file.exists():  # A halt only flattens.
+            self.publish_position_chart(now)
         account = self.paper.state(now)
         day = self.session_id(now)
         daily = self.sessions.observe_equity(day, account.balance, account.equity, self.policy, now)

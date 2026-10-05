@@ -102,13 +102,28 @@ class PaperBroker:
             unrealized += self._pnl(p, tick.bid if p.side is Side.LONG else tick.ask)
         return replace(self.account, balance=balance, equity=balance + unrealized)
 
+    def openings(self) -> dict[str, tuple[str, Decimal]]:
+        """Opening time (UTC ISO) and initial stop of every open position, by client id."""
+        with closing(sqlite3.connect(self.path)) as db, db:
+            rows = db.execute("SELECT client_id,opened_at,initial_stop FROM paper_positions "
+                              "WHERE closed_at IS NULL").fetchall()
+        return {row[0]: (row[1], Decimal(row[2])) for row in rows}
+
     def position_status(self, now: datetime) -> tuple[dict[str, Any], ...]:
         result = []
+        openings = self.openings()
         for position in self.positions():
             tick = self._tick(position.symbol, now)[0]
             price = tick.bid if position.side is Side.LONG else tick.ask
+            opened_at, initial_stop = openings.get(position.client_id, ("", position.stop))
+            risk = abs(position.entry - initial_stop)
+            sign = 1 if position.side is Side.LONG else -1
             result.append({**json.loads(canonical_json(position)), "market_price": str(price),
                            "unrealized_pnl_aud": str(self._pnl(position, price)),
+                           "opened_at_utc": opened_at, "initial_stop": str(initial_stop),
+                           # Open profit in multiples of the initial risk (1R = the loss at the first stop).
+                           "r_multiple": str(((price - position.entry) * sign / risk).quantize(Decimal("0.01")))
+                           if risk > 0 else None,
                            "pnl_basis": "simulated_incomplete_costs"})
         return tuple(result)
 
