@@ -168,8 +168,9 @@ def main() -> int:
         lowest = min(r_multiple(w, entry, risk, side) for _, w, _ in after)
         highest = max(r_multiple(b, entry, risk, side) for b, _, _ in after)
         back = next((when for b, _, when in after if r_multiple(b, entry, risk, side) >= 0), None)
-        print(f"  in the {args.after_hours} hours after the exit: worst {lowest:+.2f} R, best {highest:+.2f} R")
-        print("  price came back to the entry price at " + (f"{back:%Y-%m-%d %H:%M} UTC" if back else "no point in that window"))
+        print(f"  in the {len(after)} stored hour(s) after the exit (up to {args.after_hours} shown): "
+              f"worst {lowest:+.2f} R, best {highest:+.2f} R")
+        print("  price came back to the entry price at " + (f"{back:%Y-%m-%d %H:%M} UTC" if back else "no point so far (run again later for more hours)"))
         if back and lowest > -2:
             print("  -> a stop about twice as wide would have survived this dip, but would also double the A$ size of "
                   "every full loss unless the position is halved; one trade cannot tell which is better")
