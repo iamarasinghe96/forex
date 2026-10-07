@@ -6,15 +6,7 @@ This file has three parts:
 - **Part B** is for Codex, which has the repository and the research databases.
 - **Part C** is for ChatGPT (Deep Research), which has the web.
 
-Before pasting, re-run the autopsy on the VPS. Paste its output under "Autopsy output (latest run)".
-
-```powershell
-cd C:\forex
-git pull --ff-only origin claude/determined-thompson-f4ewei
-.\.venv\Scripts\python.exe scripts\trade_autopsy.py --symbol USDJPY --after-hours 24
-```
-
-The newer script shows the 20 hours before entry and marks the bar that set the stop. Run it a day after the loss to get the full 24 hours after the exit.
+Paste it as it is. No extra data is needed.
 
 ---
 
@@ -115,11 +107,14 @@ HOUR BY HOUR (UTC hour start; R = distance from entry in units of the first stop
   2026-10-07T09:00 Wed 07 Oct 20:00   -0.34   -0.53    -0.35  after exit
 ```
 
-### Autopsy output (latest run)
+### Data we do not have
 
-```
-(paste the re-run output here: it adds the 20 hours before entry and up to 24 hours after the exit)
-```
+- The bot's records shown above cover only 6 hours before entry and 1 hour after the exit.
+- The stop level (157.91, the 20-hour low) was set on 6 October between about 08:00 and 21:00 UTC, outside that window.
+- If you can see public USDJPY prices for 6–8 October 2026, use them for:
+  - when that low formed;
+  - whether price recovered after the stop-out.
+- Say which source you used.
 
 ### Session clock for that day
 
