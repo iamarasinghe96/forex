@@ -140,13 +140,15 @@ def main() -> int:
     during, after = [], []
     for stamp, _, high, low, close in bars:
         when = datetime.fromisoformat(stamp)
-        if when + timedelta(hours=1) <= opened_at - timedelta(hours=6):
+        if when + timedelta(hours=1) <= opened_at - timedelta(hours=21):
             continue
         note = ""
         if when <= opened_at < when + timedelta(hours=1):
             note = "<- ENTRY"
         elif when + timedelta(hours=1) <= opened_at:
-            note = "before"
+            extreme = low if side > 0 else high
+            note = ("before <- set the 20-hour " + ("low" if side > 0 else "high") + " = the stop"
+                    if abs(extreme - initial) < pip / 2 else "before")
         if when <= closed_dt < when + timedelta(hours=1):
             note = (note + " <- STOP HIT").strip() if outcome["reason"] == "STOP" else (note + " <- EXIT").strip()
         elif when > closed_dt:
