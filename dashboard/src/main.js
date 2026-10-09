@@ -1,13 +1,13 @@
 import {initializeApp} from 'firebase/app';
 import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence} from 'firebase/auth';
 import {getFirestore,doc,collection,getDocs,query,orderBy,limit,startAfter,onSnapshot,where} from 'firebase/firestore';
-import {matches,numeric,performance,reserveYears,evidenceCSV,stale,simpleSummary,botState,PERIODS,openTrades,openPnl,priceDigits} from './model.js';
+import {matches,numeric,performance,reserveYears,evidenceCSV,stale,simpleSummary,botState,PERIODS,openTrades,openPnl,priceDigits,lossReviews} from './model.js';
 import {renderTradeChart} from './chart.js';
 import './style.css';
 
 const $=id=>document.getElementById(id), money=v=>numeric(v)===null?'Unavailable':new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD'}).format(Number(v));
 const number=v=>v===null?'Unavailable':Number(v).toFixed(2);
-let auth,db,events=[],summary={},trades=[],tradeUnsub=null,chartDoc=null,chartUnsub=null,cursor=null,unsub=null,generation=0,loading=false,exhausted=false;
+let auth,db,events=[],summary={},trades=[],tradeUnsub=null,chartDoc=null,chartUnsub=null,losses=[],lossUnsub=null,lossKey=null,cursor=null,unsub=null,generation=0,loading=false,exhausted=false;
 const signed=v=>numeric(v)===null?'–':(Number(v)>0?'+':'')+money(v);
 const when=ms=>new Intl.DateTimeFormat('en-AU',{timeZone:'Australia/Sydney',weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}).format(new Date(ms));
 const pair=s=>String(s??'').replace(/\.[a-z]+$/i,'');
@@ -44,12 +44,33 @@ function renderSimple(){
   }
   $('recent').replaceChildren();if(!s.recent.length)$('recent').textContent='No finished trades in this period yet. Days without trades are normal: the bot only trades when its rules line up.';
   const why={TARGET:'target reached',STOP:'stop-loss',FLATTEN:'closed by halt'};
+  renderLosses();
   for(const e of s.recent){const v=Number(e.payload.pnl_aud);row($('recent'),`${when(Date.parse(e.payload.closed_at_utc??e.observed_at_utc))} · ${pair(e.payload.symbol)} ${e.payload.direction==='LONG'?'Buy':'Sell'} · ${why[e.payload.reason]??'closed'}`,signed(v),v>0?'good':v<0?'bad':'');}
+}
+function renderLosses(){
+  const list=lossReviews(losses,summary.first_event_at_utc).slice(0,5),key=list.map(x=>x.id).join('|');
+  if(key===lossKey)return;
+  lossKey=key;$('losses').replaceChildren();
+  if(!list.length){$('losses').textContent='No losing trades to review yet.';return;}
+  for(const loss of list){
+    const card=document.createElement('div'),actions=document.createElement('div'),copy=document.createElement('button'),save=document.createElement('button');
+    const view=document.createElement('details'),title=document.createElement('summary'),text=document.createElement('pre');
+    card.className='trade';actions.className='actions';
+    row(card,`${when(loss.closedAt)} · ${loss.symbol} ${loss.side}${loss.r===null?'':` · ${loss.r.toFixed(2)} R`}`,signed(loss.pnl),'bad');
+    copy.textContent='Copy prompt for ChatGPT';save.textContent='Download as a file';
+    title.textContent='Show the prompt';text.textContent=loss.prompt;view.append(title,text);
+    copy.addEventListener('click',async()=>{
+      try{await navigator.clipboard.writeText(loss.prompt);copy.textContent='Copied: paste it into ChatGPT';}
+      catch{view.open=true;const range=document.createRange();range.selectNodeContents(text);const selection=getSelection();selection?.removeAllRanges();selection?.addRange(range);copy.textContent='Copy the selected text below';}
+    });
+    save.addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([loss.prompt],{type:'text/plain;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download=loss.fileName;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+    actions.append(copy,save);card.append(actions,view);$('losses').append(card);
+  }
 }
 const status=text=>{$('status').textContent=text;};
 function card(target,label,value){const box=document.createElement('div');box.className='card';const title=document.createElement('span'),body=document.createElement('strong');title.textContent=label;body.textContent=value;box.append(title,body);target.append(box);}
 function details(target,records){target.replaceChildren();if(!records.length){target.textContent='No records in this selection.';return;}for(const e of records){const item=document.createElement('details'),title=document.createElement('summary'),body=document.createElement('pre');title.textContent=`${e.observed_at_utc} · ${e.kind} · ${e.payload.symbol??e.payload.candidate?.symbol??e.entity_id}`;body.textContent=JSON.stringify(e.payload,null,2);item.append(title,body);target.append(item);}}
-function clear(){generation++;unsub?.();unsub=null;tradeUnsub?.();tradeUnsub=null;chartUnsub?.();chartUnsub=null;chartDoc=null;trades=[];events=[];summary={};cursor=null;loading=false;exhausted=false;$('desk').hidden=true;for(const id of ['cards','positions','totals','metrics','rejections','events','reserves','health-events','curve'])$(id).replaceChildren();$('costs').textContent='';}
+function clear(){generation++;unsub?.();unsub=null;tradeUnsub?.();tradeUnsub=null;chartUnsub?.();chartUnsub=null;chartDoc=null;lossUnsub?.();lossUnsub=null;losses=[];lossKey=null;trades=[];events=[];summary={};cursor=null;loading=false;exhausted=false;$('desk').hidden=true;for(const id of ['cards','positions','totals','metrics','rejections','events','reserves','health-events','curve'])$(id).replaceChildren();$('costs').textContent='';}
 function filters(){return Object.fromEntries(['pair','timeframe','style','from','through'].map(id=>[id,$(id).value.trim()]));}
 function render(){
   renderSimple();
@@ -75,7 +96,7 @@ function render(){
   details($('health-events'),ordered.filter(e=>['health','error','alert','context_call'].includes(e.kind)));$('more').disabled=loading||exhausted;
 }
 async function page(reset=false){if(loading||!auth?.currentUser)return;loading=true;const token=generation;try{const root=collection(db,'modes',$('mode').value,'events');const constraints=[orderBy('sequence','desc'),limit(100)];if(!reset&&cursor)constraints.push(startAfter(cursor));const snapshot=await getDocs(query(root,...constraints));if(token!==generation)return;if(reset)events=[];const known=new Set(events.map(e=>e.event_id));for(const item of snapshot.docs){const value=item.data();if(!known.has(value.event_id))events.push(value);}cursor=snapshot.docs.at(-1)??cursor;exhausted=snapshot.size<100;status(snapshot.metadata.fromCache?'Offline cached history — freshness unverified.':'Cloud history loaded.');render();}catch{if(token===generation){clear();status('Data access failed. Check operator authorization, network and deployed rules. Sign out and back in to retry.');}}finally{if(token===generation){loading=false;$('more').disabled=exhausted;}}}
-function subscribe(){clear();$('desk').hidden=false;const token=generation;unsub=onSnapshot(doc(db,'modes',$('mode').value,'aggregates','all'),{includeMetadataChanges:true},snapshot=>{if(token!==generation)return;summary=snapshot.exists()?snapshot.data():{};status(snapshot.metadata.fromCache?'Waiting for server confirmation; cloud data may be stale.':'Connected to the cloud mirror.');render();},()=>{if(token===generation){clear();status('Access denied or cloud unavailable. No account data is displayed.');}});tradeUnsub=onSnapshot(query(collection(db,'modes',$('mode').value,'events'),where('kind','==','trade_closed')),snapshot=>{if(token!==generation)return;trades=snapshot.docs.map(d=>d.data());render();},()=>{});chartUnsub=onSnapshot(doc(db,'modes',$('mode').value,'aggregates','chart'),snapshot=>{if(token!==generation)return;chartDoc=snapshot.exists()?snapshot.data():null;render();},()=>{});void page(true);}
+function subscribe(){clear();$('desk').hidden=false;const token=generation;unsub=onSnapshot(doc(db,'modes',$('mode').value,'aggregates','all'),{includeMetadataChanges:true},snapshot=>{if(token!==generation)return;summary=snapshot.exists()?snapshot.data():{};status(snapshot.metadata.fromCache?'Waiting for server confirmation; cloud data may be stale.':'Connected to the cloud mirror.');render();},()=>{if(token===generation){clear();status('Access denied or cloud unavailable. No account data is displayed.');}});tradeUnsub=onSnapshot(query(collection(db,'modes',$('mode').value,'events'),where('kind','==','trade_closed')),snapshot=>{if(token!==generation)return;trades=snapshot.docs.map(d=>d.data());render();},()=>{});chartUnsub=onSnapshot(doc(db,'modes',$('mode').value,'aggregates','chart'),snapshot=>{if(token!==generation)return;chartDoc=snapshot.exists()?snapshot.data():null;render();},()=>{});lossUnsub=onSnapshot(query(collection(db,'modes',$('mode').value,'events'),where('kind','==','loss_prompt')),snapshot=>{if(token!==generation)return;losses=snapshot.docs.map(d=>d.data());render();},()=>{});void page(true);}
 $('mode').addEventListener('change',subscribe);$('period').addEventListener('change',()=>{try{localStorage.setItem('forex-period',$('period').value);}catch{}render();});$('refresh').addEventListener('click',()=>{if(auth?.currentUser)subscribe();});$('more').addEventListener('click',()=>void page());
 for(const id of ['pair','timeframe','style','from','through','search','sort'])$(id).addEventListener('input',render);
 $('export').addEventListener('click',()=>{const blob=new Blob([evidenceCSV(events.filter(e=>matches(e,filters())))],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`forex-${$('mode').value}-loaded-evidence.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});

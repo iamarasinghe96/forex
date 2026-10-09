@@ -14,3 +14,4 @@
 .trade-chart .cross{stroke:var(--ink-2);stroke-width:1}.trade-chart .hit{fill:transparent;cursor:crosshair}
 .trade-chart .tip{position:absolute;top:2px;transform:translateX(-50%);background:#0d151cf0;border:1px solid #3a505d;border-radius:6px;padding:5px 9px;font-size:.8rem;color:var(--ink-2);pointer-events:none;width:max-content;max-width:94%;text-align:center}.trade-chart .tip strong{color:#fff}
 .chart-key{font-size:.8rem;margin:2px 0 0}.trade table{width:100%;border-collapse:collapse;font-size:.8rem;font-variant-numeric:tabular-nums}.trade th,.trade td{text-align:right;padding:3px 6px;border-bottom:1px solid #22343f}.trade th:first-child,.trade td:first-child{text-align:left}
+.actions{display:flex;flex-wrap:wrap;gap:8px}.trade details pre{max-height:320px;overflow:auto;margin:8px 0 0}

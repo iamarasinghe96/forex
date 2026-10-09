@@ -38,9 +38,12 @@ Telegram. No VPS login and no code editing are needed. Real-money trading stays 
 | 4 | Send `/approve N` (or `/reject N`) | Saves the change; the running bot loads it within a minute and confirms "Strategy updated and running: ..." |
 | 5 | If results get worse, send `/rollback` | Restores the previous settings |
 
-Other commands: `/scores` (strongest and weakest buckets for the current settings version, plus
-totals for every version), `/settings` (current values and version),
-`/help`.
+Other commands:
+- `/scores`: the strongest and weakest buckets for the current settings version, plus totals for
+  every version.
+- `/settings`: current values and version.
+- `/loss`: the latest losing trade's review prompt for ChatGPT. See [LOSS_REVIEWS.md](LOSS_REVIEWS.md).
+- `/help`.
 
 ## What a change set can and cannot do
 

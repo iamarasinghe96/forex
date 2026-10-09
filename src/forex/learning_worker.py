@@ -23,6 +23,7 @@ from forex.learning import (
     price_path,
     trade_facts,
 )
+from forex.loss_review import due, loss_prompt_payload, losses_without_prompt
 
 LOGGER = logging.getLogger("forex.learning")
 
@@ -34,6 +35,7 @@ class LearningWorker:
         # ``config`` is a callable so approved patches (e.g. prior_trades) apply without restart.
         self.config, self.journal, self.store = config, journal, store
         self.provider, self.candles, self.clock = provider, candles, clock
+        self.failed_prompts: set[str] = set()  # Trades whose loss prompt failed once; not retried until restart.
 
     def once(self) -> int:
         processed = 0
@@ -42,7 +44,30 @@ class LearningWorker:
                 self.learn(event.entity_id, event.payload)
                 processed += 1
             self.store.set_cursor(event.sequence)
+        self.write_loss_prompts()
         return processed
+
+    def write_loss_prompts(self) -> int:
+        """About an hour after each losing trade, store a self-contained ChatGPT review prompt."""
+        config = self.config()
+        waiting = [e for e in losses_without_prompt(self.journal) if e.entity_id not in self.failed_prompts]
+        if not config.learning.loss_prompts or not waiting:
+            return 0  # The clock is read only when a prompt may be due.
+        now, written = self.clock(), 0
+        for event in waiting:
+            if not due(event, now):
+                continue
+            symbol = str(event.payload.get("symbol", "")).upper().split(".")[0]
+            try:
+                payload = loss_prompt_payload(config, event, self.candles(symbol), self.journal, now)
+            except Exception as exc:  # noqa: BLE001 - a review prompt must never interrupt learning
+                self.failed_prompts.add(event.entity_id)
+                LOGGER.warning("Loss review prompt for %s failed (%s); skipped.", event.entity_id[:12],
+                               type(exc).__name__)
+                continue
+            self.journal.append("PAPER", "loss_prompt", event.entity_id, payload, now)
+            written += 1
+        return written
 
     def learn(self, trade_id: str, payload: Mapping[str, Any]) -> None:
         facts = trade_facts(trade_id, payload)

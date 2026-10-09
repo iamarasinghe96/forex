@@ -104,3 +104,13 @@ export function chartModel(chart,live,{width=640,height=260,left=58,right=118,to
     now:now===null?null:{x:left+plotW,y:y(now),value:now},targetOff,target,
     ticks:ticks.map(v=>({value:v,y:y(v)})),digits:priceDigits(chart.symbol)};
 }
+// Review prompts the bot writes after losing trades (newest first), from this paper account only.
+export function lossReviews(events,firstEventAt=null){
+  const start=Date.parse(firstEventAt??'');
+  return (events??[]).filter(e=>e?.kind==='loss_prompt'&&typeof e.payload?.prompt==='string'&&e.payload.prompt.length>0)
+    .map(e=>({id:e.entity_id,symbol:String(e.payload.symbol??'').replace(/\.[a-z]+$/i,''),side:e.payload.side==='LONG'?'Buy':'Sell',
+      r:numeric(e.payload.r),pnl:numeric(e.payload.pnl_aud),closedAt:Date.parse(e.payload.closed_at_utc??e.observed_at_utc??''),
+      prompt:e.payload.prompt,fileName:String(e.payload.file_name??'loss-review.txt')}))
+    .filter(x=>Number.isFinite(x.closedAt)&&(!Number.isFinite(start)||x.closedAt>=start))
+    .sort((a,b)=>b.closedAt-a.closedAt);
+}

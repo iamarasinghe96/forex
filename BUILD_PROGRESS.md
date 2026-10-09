@@ -921,3 +921,49 @@ Dashboard: 11 node tests pass and the build succeeds.
 Deployed to the VPS on 2026-10-05: C:\forex at 5345525, 263 passed and 1 skipped. Includes the
 dashboard chart publisher; the dashboard itself was published by the Pages workflow (build and
 deploy succeeded).
+
+### Loss review prompts for ChatGPT (2026-10-09)
+
+**Operator request:** after every loss, a copyable prompt that explains the bot's strategy and
+structure, and what happened in the trade. It is for ChatGPT without Codex, which has no access
+to the repository. ChatGPT's answer comes back to Claude Code. Process: docs/LOSS_REVIEWS.md.
+Ledger: docs/LOSS_LESSONS.md.
+
+**Bot:**
+- `src/forex/loss_review.py` builds the prompt about an hour after each losing trade, so the exit
+  bar is stored. It is triggered from the learning worker and stored as a `loss_prompt` journal
+  event.
+- The prompt contains:
+  - the instructions and research so far, from
+    `src/forex/prompts/loss-review-chatgpt-v1.md`; Claude Code keeps the research list current;
+  - the live rules, generated from the settings;
+  - the trade's facts and the bot's own entry record;
+  - hourly prices in R from 24 hours before entry, with the stop-setting, entry and exit hours
+    marked;
+  - a DST-aware market clock;
+  - the account's closed trades and other open trades.
+- The prompt has no account identifiers.
+- Losses closed in the last 14 days get a prompt, so the 7 Oct USDJPY loss gets one after the
+  update.
+- Delivery:
+  - Telegram sends the prompt as a `.txt` file (`TelegramAlerter.send_document`);
+  - `/loss` resends the latest one;
+  - prompt failures are logged and never affect trading or learning.
+- The clock is read only when a prompt may be due. A shared test clock caught an earlier
+  version that read it every 30 s.
+- `JournalStore.find` and `JournalStore.of_kind` were added.
+- `learning.loss_prompts: true` (default true).
+
+**Dashboard:**
+- New "Learn from losses" section: Copy prompt for ChatGPT, Download as a file, Show the prompt.
+- Checked at phone width against a fake offline Firebase: Copy put the newest prompt on the
+  clipboard, with no page errors and no sideways scrolling.
+
+**Tests:** 280 passed (7 new: prompt content and timing, Telegram file, /loss, Firestore
+safety, no prompt for wins or when switched off, DST market clock, price-table markers). Ruff
+clean; mypy shows only the two Windows-only errors. Dashboard: 12 node tests pass, the build
+succeeds, and the browser test passes.
+
+**Testing ChatGPT's proposals from Claude Code needs historical data.** The cloud environment's
+network policy blocks `datafeed.dukascopy.com` (403), so the operator must allow it there, or the
+tests run on the PC.

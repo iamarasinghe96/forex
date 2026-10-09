@@ -516,7 +516,7 @@ class PaperRuntime:
             alert_thread = Thread(target=notifier.run, args=(stop,), daemon=True)
             if self.config.learning.enabled and self.config.learning.telegram_commands:
                 from forex.telegram_commands import CommandHandler, TelegramCommandWorker
-                handler = CommandHandler(self.base_config, self.learning, self.overlay_path, self.clock)
+                handler = CommandHandler(self.base_config, self.learning, self.overlay_path, self.clock, self.journal)
                 commands = TelegramCommandWorker(handler, secrets.telegram_bot_token, secrets.telegram_chat_id,
                                                  self.learning)
                 helpers.append(Thread(target=commands.run, args=(stop,), daemon=True))

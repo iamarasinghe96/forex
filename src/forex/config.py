@@ -270,6 +270,10 @@ class LearningConfig(BaseModel):
     telegram_commands: bool = True    # Accept /scores, /review, patches and /approve from the operator chat.
     review_prompt_file: Path = Path("src/forex/prompts/learning-review-v1.md")
     postmortem_prompt_file: Path = Path("src/forex/prompts/trade-postmortem-v1.md")
+    # About an hour after each losing trade, write a self-contained review prompt for ChatGPT
+    # (Telegram file, /loss command, dashboard copy button). Nothing is sent to an AI service.
+    loss_prompts: bool = True
+    loss_prompt_file: Path = Path("src/forex/prompts/loss-review-chatgpt-v1.md")
 
 
 class ScoringConfig(BaseModel):

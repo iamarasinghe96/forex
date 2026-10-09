@@ -18,6 +18,7 @@ import httpx
 
 from forex.config import AppConfig
 from forex.errors import OperatorError
+from forex.journal import JournalStore
 from forex.learning import (
     PATCH_MARKER,
     LearningStore,
@@ -38,6 +39,7 @@ HELP = (
     "/scores - what the bot has learned so far\n"
     "/settings - settings a review may change\n"
     "/review - get the learning prompt to paste into Claude\n"
+    "/loss - the latest losing trade's review prompt for ChatGPT\n"
     "Paste Claude's JSON reply here - the bot checks it and shows the changes\n"
     "/approve N or /reject N - decide on change set N\n"
     "/rollback - undo the last approved change set"
@@ -52,8 +54,9 @@ class Reply:
 
 class CommandHandler:
     def __init__(self, base: AppConfig, store: LearningStore, overlay: Path,
-                 clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
+                 clock: Callable[[], datetime] = lambda: datetime.now(UTC), journal: JournalStore | None = None):
         self.base, self.store, self.overlay_path, self.clock = base, store, overlay, clock
+        self.journal = journal
 
     def effective(self, overlay: dict[str, Any] | None = None) -> AppConfig:
         return apply_overlay(self.base, read_overlay(self.overlay_path) if overlay is None else overlay)
@@ -79,6 +82,15 @@ class CommandHandler:
             prompt = review_prompt(self.effective(), self.store, instructions, self.clock())
             return [Reply("Open Claude, attach or paste this file, and send it. Then paste Claude's JSON reply "
                           "back here.", ("forex-learning-prompt.txt", prompt))]
+        if command == "/loss":
+            latest = self.journal.of_kind("PAPER", "loss_prompt", limit=1) if self.journal else ()
+            if not latest:
+                return [Reply("No loss review yet. The bot writes one about an hour after each losing trade closes.")]
+            loss = latest[-1].payload
+            return [Reply(f"Latest loss review ({loss.get('symbol')}, closed {str(loss.get('closed_at_utc'))[:16]} "
+                          "UTC). Copy all the text, or share the file to ChatGPT, and send it. Then paste ChatGPT's "
+                          "answer to Claude Code.", (str(loss.get("file_name", "loss-review.txt")),
+                                                     str(loss.get("prompt", ""))))]
         if command in {"/approve", "/reject"}:
             if not argument.strip().isdigit():
                 return [Reply(f"Use {command} followed by the change-set number, e.g. {command} 3")]

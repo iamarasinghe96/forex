@@ -55,3 +55,14 @@ test('open trades: total live P&L, unknown values, and chart geometry', () => {
   assert.deepEqual(spread, [50, 65, 80]);
   assert.equal(priceDigits('USDJPY.a'), 3);
 });
+import {lossReviews} from '../src/model.js';
+test('loss reviews are newest first, from this account only, and need a prompt',()=>{
+  const prompt=(id,at,extra={})=>({kind:'loss_prompt',entity_id:id,observed_at_utc:at,payload:{symbol:'USDJPY',side:'LONG',r:-1.04,pnl_aud:'-53.70',closed_at_utc:at,prompt:'# Losing trade review',file_name:`${id}.txt`,...extra}});
+  const list=lossReviews([prompt('old','2026-09-20T00:00:00+00:00'),prompt('a','2026-10-07T08:15:01+00:00'),
+    prompt('b','2026-10-08T10:00:00+00:00',{symbol:'EURUSD.a',side:'SHORT'}),prompt('empty','2026-10-09T00:00:00+00:00',{prompt:''}),
+    {kind:'trade_closed',payload:{}}],'2026-10-01T00:00:00+00:00');
+  assert.deepEqual(list.map(x=>x.id),['b','a']);
+  assert.equal(list[0].symbol,'EURUSD');assert.equal(list[0].side,'Sell');assert.equal(list[1].pnl,-53.7);assert.equal(list[1].r,-1.04);
+  assert.equal(lossReviews([prompt('old','2026-09-20T00:00:00+00:00')]).length,1);
+  assert.deepEqual(lossReviews(undefined),[]);
+});

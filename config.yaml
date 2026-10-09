@@ -178,3 +178,7 @@ learning:
   evidence_z: 2.5            # Act only on buckets whose average + 2.5 standard errors is still below 0 R.
   disabled_pairs: []
   telegram_commands: true
+  # About an hour after each losing trade: a complete review prompt for ChatGPT (strategy, trade,
+  # hourly prices, research so far). Telegram sends it as a file; /loss resends it; the dashboard
+  # has a Copy button. Nothing is sent to ChatGPT automatically. See docs/LOSS_REVIEWS.md.
+  loss_prompts: true

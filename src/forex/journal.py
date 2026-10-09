@@ -149,6 +149,23 @@ class JournalStore:
                               (after_sequence, mode, mode, limit)).fetchall()
         return tuple(_event(row) for row in rows)
 
+    def find(self, mode: str, kind: str, entity_id: str) -> JournalEvent | None:
+        """The one event with this identity, if it was recorded."""
+        event_id = hashlib.sha256(f"{mode}|{kind}|{entity_id}".encode()).hexdigest()
+        with closing(sqlite3.connect(self.path)) as db, db:
+            row = db.execute("SELECT * FROM journal_events WHERE event_id=?", (event_id,)).fetchone()
+        return _event(row) if row else None
+
+    def of_kind(self, mode: str, kind: str, *, since: datetime | None = None,
+                limit: int = 1000) -> tuple[JournalEvent, ...]:
+        """The latest ``limit`` events of one kind (optionally observed at or after ``since``), oldest first."""
+        with closing(sqlite3.connect(self.path)) as db, db:
+            rows = db.execute("SELECT * FROM (SELECT * FROM journal_events WHERE mode=? AND kind=? "
+                              "AND observed_at_utc>=? ORDER BY observed_at_utc DESC, sequence DESC LIMIT ?) "
+                              "ORDER BY observed_at_utc, sequence",
+                              (mode, kind, since.isoformat() if since else "", limit)).fetchall()
+        return tuple(_event(row) for row in rows)
+
     def pending(self, now: datetime, limit: int) -> tuple[JournalEvent, ...]:
         _require_utc(now, "now")
         with closing(sqlite3.connect(self.path)) as db, db:

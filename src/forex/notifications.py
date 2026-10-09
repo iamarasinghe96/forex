@@ -29,6 +29,16 @@ class NotificationWorker:
                                   f"({p.get('wins', 0)} won, {p.get('losses', 0)} lost), "
                                   f"P&L A${float(p.get('realized_pnl_aud', 0)):+.2f}.")
                 count += 1
+            elif event.kind == "loss_prompt":
+                p = event.payload
+                pnl = float(p.get("pnl_aud") or 0)
+                self.alerter.send_document(
+                    str(p.get("file_name", "loss-review.txt")), str(p.get("prompt", "")),
+                    f"Loss review for ChatGPT: {p.get('symbol', '')} {'Buy' if p.get('side') == 'LONG' else 'Sell'} "
+                    f"{float(p.get('r') or 0):+.2f} R (A${pnl:+.2f}). Open the file and copy all the text, or share "
+                    "the file to ChatGPT, and send it. Then paste ChatGPT's answer to Claude Code. The dashboard "
+                    "also has a Copy button; /loss sends this file again.")
+                count += 1
             elif event.kind in {"trade_review", "strategy_updated"}:
                 # Learning messages are composed by the bot from its own records (no account details).
                 self.alerter.send(str(event.payload.get("message", event.kind))[:3500])

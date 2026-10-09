@@ -48,3 +48,9 @@ chart reads `modes/<mode>/aggregates/chart`, which the bot publishes hourly and 
 of open trades changes; the levels come from the live snapshot. The earlier detailed operator
 view is kept under "Technical details". Until PR #18 is reviewed and merged, the workflow also
 publishes from `claude/determined-thompson-f4ewei` (the reviewed branch running on the VPS).
+
+Learn from losses (2026-10-09): the five latest `loss_prompt` events, read with a single-field
+`kind` query and limited to this paper account. Each shows the losing trade with buttons to copy
+the ChatGPT review prompt or download it as a text file, plus the prompt itself. If the clipboard
+is unavailable, Copy opens and selects the text. The list is rebuilt only when it changes, so an
+open prompt survives the 30-second refresh. See `docs/LOSS_REVIEWS.md`.
