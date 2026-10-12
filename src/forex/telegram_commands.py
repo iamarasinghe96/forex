@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from forex.config import AppConfig
+from forex.domain import Timeframe
 from forex.errors import OperatorError
 from forex.journal import JournalStore
 from forex.learning import (
@@ -32,6 +33,8 @@ from forex.learning import (
     strategy_version,
     write_overlay,
 )
+from forex.lookback import DEFAULT_DAYS, MAX_DAYS, build_lookback_prompt
+from forex.persistence import CandleStore
 
 LOGGER = logging.getLogger("forex.telegram")
 HELP = (
@@ -40,6 +43,7 @@ HELP = (
     "/settings - settings a review may change\n"
     "/review - get the learning prompt to paste into Claude\n"
     "/loss - the latest losing trade's review prompt for ChatGPT\n"
+    "/lookback - every trade of the last 14 days reviewed, as a ChatGPT prompt (/lookback 30 for 30 days)\n"
     "Paste Claude's JSON reply here - the bot checks it and shows the changes\n"
     "/approve N or /reject N - decide on change set N\n"
     "/rollback - undo the last approved change set"
@@ -91,6 +95,17 @@ class CommandHandler:
                           "UTC). Copy all the text, or share the file to ChatGPT, and send it. Then paste ChatGPT's "
                           "answer to Claude Code.", (str(loss.get("file_name", "loss-review.txt")),
                                                      str(loss.get("prompt", ""))))]
+        if command == "/lookback":
+            if self.journal is None:
+                return [Reply("The lookback needs the bot's trade records, which are not available here.")]
+            days = int(argument) if argument.strip().isdigit() else DEFAULT_DAYS
+            now, candles = self.clock(), CandleStore(self.journal.path)
+            text, closed, still_open = build_lookback_prompt(
+                self.effective(), self.journal, lambda symbol: candles.load(symbol, Timeframe.H1), days, now)
+            days = max(1, min(MAX_DAYS, days))
+            return [Reply(f"Lookback over the last {days} days: {closed} closed trades, {still_open} open. Copy all "
+                          "the text, or share the file to ChatGPT (Deep Research works well), and send it. Then paste "
+                          "the answer to Claude Code.", (f"lookback-{now:%Y-%m-%d}-{days}d.txt", text))]
         if command in {"/approve", "/reject"}:
             if not argument.strip().isdigit():
                 return [Reply(f"Use {command} followed by the change-set number, e.g. {command} 3")]

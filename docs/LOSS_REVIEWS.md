@@ -80,11 +80,39 @@ data it was found in failed on fresh data.
 (`datafeed.dukascopy.com`). This cloud environment's network policy currently blocks it. Allow
 it under the environment's Network access settings, or run the test scripts on the PC.
 
+## Looking back over all recent trades
+
+Send `/lookback` to the Telegram bot. It sends back one file, `lookback-<date>-14d.txt`, reviewing
+every trade of the last 14 days, winners as well as losers. Send `/lookback 30` for 30 days (up to
+90). Paste it into ChatGPT (Deep Research works well), then paste the answer to Claude Code.
+
+The file contains:
+- **The instructions:** what went right and wrong per trade; patterns across trades; exits; risk
+  and sizing; the comparison with the research; at most 5 testable rules.
+- **The research so far and the bot's current rules.**
+- **Results at a glance:** wins, losses and break-evens, total and average R, A$, win rate,
+  profit factor, the largest fall from a balance high and the longest losing run.
+- **The expected range:** what the research expectation allows for this many trades. For
+  example, after 10 trades an average anywhere between about −0.65 R and +0.73 R is normal, so
+  a few trades rarely prove anything.
+- **Breakdowns** by pair, direction, session, exit, trend strength, entry location in the
+  20-hour range and stop width.
+- **Winners against losers** on what the bot measured at entry.
+- **Trades open at the same time,** and how many were bets on a stronger US dollar.
+- **One row per trade.** The latest 20 trades also get details: why the bot entered, the move
+  before entry, the best and worst points while open, how much was given back, what happened
+  after the exit, and a 4-hour price path.
+- **The open trades now** and the market clock for the period, including daylight-saving changes.
+
+Without the bot running: `python scripts/lookback_prompt.py --days 14` writes the same file
+next to the paper database.
+
 ## Keeping the prompt accurate
 
 - The rules section is generated from the live settings on every loss, so it stays current.
-- The research section lives in the prompt file. Claude Code updates it whenever a research
-  result changes, so ChatGPT never re-proposes an idea that has already failed.
+- The research section lives in `src/forex/prompts/research-so-far.md`, shared by the loss and
+  lookback prompts. Claude Code updates it whenever a research result changes, so ChatGPT never
+  re-proposes an idea that has already failed.
 
 ## Settings
 

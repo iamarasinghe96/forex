@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -27,6 +28,8 @@ from forex.journal import JournalEvent, JournalStore
 from forex.learning import TradeFacts, price_path, strategy_version, trade_facts
 
 PROMPT_VERSION = "loss-review-chatgpt-v1"
+# What has already been tested, shared by every review prompt; the developer keeps it current.
+RESEARCH_FILE = Path(__file__).parent / "prompts" / "research-so-far.md"
 DELAY = timedelta(hours=1)      # Wait for the exit hour's bar, so the price table includes it.
 LOOKBACK = timedelta(days=14)   # Older losses (e.g. from before this feature) get no prompt.
 BARS_BEFORE, BARS_AFTER, MAX_OPEN_BARS = 24, 24, 96
@@ -82,7 +85,11 @@ def _duration(delta: timedelta) -> str:
                                       f"{minutes} min" if minutes and not days else "") if part) or "under a minute"
 
 
-def strategy_lines(config: AppConfig, facts: TradeFacts) -> list[str]:
+def research_text() -> str:
+    return RESEARCH_FILE.read_text(encoding="utf-8").strip()
+
+
+def strategy_lines(config: AppConfig, facts: TradeFacts | None = None) -> list[str]:
     """The live rules in plain words, with every number taken from the settings."""
     a, p, r, lc, ctx = config.analysis, config.paper, config.risk, config.learning, config.context
     version = strategy_version(config)
@@ -94,7 +101,7 @@ def strategy_lines(config: AppConfig, facts: TradeFacts) -> list[str]:
     providers = ", ".join(provider.name for provider in ctx.providers) or "none configured"
     lines = [
         f"Settings version {version}"
-        + ("" if version == facts.strategy_version else
+        + ("" if facts is None or version == facts.strategy_version else
            f" (this trade was taken under version {facts.strategy_version}; the rules below are the current ones)")
         + ".", "",
         "**Account and data**",
@@ -385,7 +392,7 @@ def build_loss_prompt(config: AppConfig, instructions: str, event: JournalEvent,
     sections = [
         title, "",
         f"Written by the paper bot at {now:%Y-%m-%d %H:%M} UTC (prompt {PROMPT_VERSION}).", "",
-        instructions.strip(), "",
+        instructions.strip(), "", research_text(), "",
         "## How the bot works now", "", *strategy_lines(config, facts), "",
         "## The losing trade", "", *trade_lines(event, facts), "",
         "## Why the bot took it (its own record at the time)", "", *entry_lines(event, facts, journal), "",

@@ -967,3 +967,32 @@ succeeds, and the browser test passes.
 **Testing ChatGPT's proposals from Claude Code needs historical data.** The cloud environment's
 network policy blocks `datafeed.dukascopy.com` (403), so the operator must allow it there, or the
 tests run on the PC.
+
+### Lookback prompt over all recent trades (2026-10-12)
+
+**Operator request:** a full review of what went right and wrong across the trades, as a prompt
+for ChatGPT Deep Research.
+
+**Bot:** `src/forex/lookback.py` builds the prompt from the bot's own records. Telegram
+`/lookback [days]` sends it as a file (default 14 days, at most 90).
+`scripts/lookback_prompt.py` writes the same file without the bot running.
+
+**The prompt contains:**
+- the instructions (`src/forex/prompts/lookback-review-chatgpt-v1.md`);
+- the shared research summary (`research-so-far.md`, now used by loss prompts too);
+- the live rules;
+- results at a glance, with the range the research expectation allows for this many trades
+  (expected +0.02 to +0.06 R per trade ± 2 × 1.06 / √n);
+- breakdowns by pair, direction, session, exit, H4 strength, entry location and stop width;
+- winners against losers;
+- overlapping trades and US-dollar exposure;
+- a table of every trade, plus details and a 4-hour path for the latest 20;
+- the open trades now;
+- a DST-aware market clock.
+
+Break-even means |R| < 0.1.
+
+**Tests:** 284 passed (4 new: results and breakdown numbers on a realistic win, loss and open
+trade; period filtering and the empty case; DST changes in the market clock; `/lookback`
+end-to-end with the real paper runtime, including the day limit). Ruff clean; mypy shows only
+the two Windows-only errors.

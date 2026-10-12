@@ -43,6 +43,8 @@ Other commands:
   every version.
 - `/settings`: current values and version.
 - `/loss`: the latest losing trade's review prompt for ChatGPT. See [LOSS_REVIEWS.md](LOSS_REVIEWS.md).
+- `/lookback` (or `/lookback 30`): every trade of the last 14 (or 30) days reviewed, as a ChatGPT
+  prompt. See [LOSS_REVIEWS.md](LOSS_REVIEWS.md).
 - `/help`.
 
 ## What a change set can and cannot do
