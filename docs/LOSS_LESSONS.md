@@ -95,7 +95,7 @@ market episode, so the true sample is about 3 independent outcomes.
 | "The AI check approved the USDJPY buy although a BOJ interview was public" | **True, and structural.** The AI check is given no news at all, only the bot's own numbers, and is told missing news is neutral. The bot has no news awareness. | Descriptions corrected everywhere. Real event data stays test C4. |
 | Trades #1–4 risked 2.6–4.8%, not 5% | Most likely the 0.01-lot rounding. With wide stops on A$1,000, 0.029 lots becomes 0.02; the widest stops show the lowest risk. | Prompts now show each trade's sizing steps: requested → after rounding and margin → AI → learning. |
 | "structure = 1.17 exceeds its intended range" | **True.** The part is not capped at 1, so breakout closes score higher. | Documented in the prompts; capping is test C7. |
-| All 8 trades bet on a stronger US dollar | **True.** All three pairs contain USD, so they are one bet. | US-dollar direction cap added, **off** until the operator decides; portfolio test C8. |
+| All 8 trades bet on a stronger US dollar | **True.** All three pairs contain USD, so they are one bet. | US-dollar direction cap added and switched **on at 10%** (operator decision, 13 Oct); portfolio test C8. |
 | Rejected signals and the AI's verdicts were missing | **True.** | The lookback now counts setups not traded, by reason, and the AI verdicts. |
 
 ## Patterns so far (3 losses and 4 related wins: still not evidence)
@@ -122,7 +122,7 @@ are ChatGPT's, from the 13 Oct review.
 | C5 | Yen intervention risk | Cap risk on USDJPY buys while the price is in a recent intervention zone. A risk rule, needed before real money. | open |
 | C6 | Stop buffer (G) | Stop at the 20-hour extreme ± 0.5 × ATR (0.25 and 1.0 as fixed sensitivity checks), with the size cut to keep the same A$ risk. | open |
 | C7 | Cap "structure" at 1 | The same rules with the structure part capped at 1. | open |
-| C8 | US-dollar direction cap (G) | Block a new trade if open risk in its US-dollar direction would exceed 8–10% of the balance. Built as `risk.max_usd_direction_risk_percent`, off. Pass: the 95th-percentile drawdown falls by at least 25% without hurting risk-adjusted growth. | built, off: operator decision |
+| C8 | US-dollar direction cap (G) | Block a new trade if open risk in its US-dollar direction would exceed 8–10% of the balance. Built as `risk.max_usd_direction_risk_percent`, off. Pass: the 95th-percentile drawdown falls by at least 25% without hurting risk-adjusted growth. | **on at 10%** (operator decision, 13 Oct); the portfolio test is still owed |
 | C9 | Exit variants (G) | Same entries; compare the current exit, a fixed 2 R target, and a 2 R or 4 R ATR trail. | open |
 
 **Pass bar for C1–C3, C6, C7 and C9** (to be fixed per test before running):

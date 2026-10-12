@@ -1027,3 +1027,19 @@ The lookback also counts the setups that were not traded, by reason, and the AI 
 
 **Queued tests** (C1–C9 in the ledger) need historical data. The cloud network policy blocks
 `datafeed.dukascopy.com`.
+
+### US-dollar direction cap switched on at 10% (operator decision, 2026-10-13)
+
+`risk.max_usd_direction_risk_percent: 10` in `config.yaml`. A new trade is blocked when open risk
+at current stops betting the same way on the US dollar, plus the new trade's risk, would exceed
+10% of the balance. Trades at break-even count as 0, so at 5% per trade at most two full trades
+can bet the same way.
+
+**What it changes:**
+- The risk policy identity changes; the strategy settings version (4977cb76) does not, so the
+  learning scores continue.
+- Blocked setups are journaled as `hard_risk_block` with `CONFIGURED_MAXIMUM_SAME_DIRECTION_USD_RISK`.
+  `/lookback` lists them as "US-dollar direction risk cap reached".
+- The change history in the review prompts records it.
+
+**Not yet tested on history.** It is a risk preference; the C8 portfolio test is still owed.

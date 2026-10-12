@@ -36,7 +36,7 @@ the direction of the H4 trend, mostly USDJPY buys during 2021–2024.
 - no new entries from 00:00 to 06:00 UTC;
 - a stop buffer of 0.25–1.0 × ATR beyond the 20-hour extreme, at the same A$ risk;
 - capping the setup score's "structure" part at 1;
-- a cap on risk betting the same way on the US dollar, built but off;
+- the US-dollar direction cap (live at 10% since the update after 13 Oct): its effect on drawdown and growth;
 - exit variants: a fixed 2 R target, or a 2 R or 4 R ATR trail;
 - scheduled-news and central-bank event filters (needs a historical calendar and news archive);
 - yen-intervention risk rules;

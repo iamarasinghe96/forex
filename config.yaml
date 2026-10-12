@@ -112,11 +112,11 @@ risk:
   # Margin realism: a trade is cut to what free margin allows at the account leverage (30:1),
   # as a real A$1,000 account would; 5% risk with a tight stop can need more than 30:1.
   enforce_margin: true
-  # US-dollar concentration cap (operator decision; off = null). All three pairs contain USD, so a
+  # US-dollar concentration cap (operator decision 2026-10-13: 10%; off = null). All three pairs contain USD, so a
   # EURUSD or GBPUSD sell and a USDJPY buy are one bet on a stronger dollar. When set, a new trade is
   # blocked if open risk at current stops in its USD direction, plus its own risk, would exceed this
   # percent of the balance (trades already at break-even count as 0). 10 = at most two 5% trades.
-  max_usd_direction_risk_percent: null
+  max_usd_direction_risk_percent: 10
 
 # Layer 7 operational defaults (UNVALIDATED). No command enables broker execution.
 execution:

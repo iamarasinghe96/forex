@@ -56,12 +56,13 @@ def test_opposite_bets_and_break_even_trades_do_not_count() -> None:
     assert usd_direction_risk((gbp_sell,), "EURGBP", Side.SHORT) == 0  # No US dollar in the pair.
 
 
-def test_cap_is_off_by_default_and_changes_policy_identity_only_when_set() -> None:
+def test_cap_is_10_percent_live_and_changes_policy_identity_only_when_set() -> None:
     config = load_config(Path("config.yaml"))
-    assert config.risk.max_usd_direction_risk_percent is None
-    base = policy_from_config(config.risk)
+    assert config.risk.max_usd_direction_risk_percent == 10  # Operator decision, 13 Oct 2026.
+    assert policy_from_config(config.risk).max_usd_direction_risk == D("0.1")
+    base = policy_from_config(config.risk.model_copy(update={"max_usd_direction_risk_percent": None}))
     assert base.max_usd_direction_risk is None
-    capped = policy_from_config(config.risk.model_copy(update={"max_usd_direction_risk_percent": 10}))
-    assert capped.max_usd_direction_risk == D("0.1") and capped.policy_id != base.policy_id
+    assert policy_from_config(config.risk).policy_id != base.policy_id
+    assert base.policy_id == replace(base, max_usd_direction_risk=None).policy_id  # Off: identity unchanged.
     with pytest.raises(ValueError):
         replace(POLICY, max_usd_direction_risk=D("1.5"))
