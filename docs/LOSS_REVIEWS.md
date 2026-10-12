@@ -19,7 +19,7 @@ the exit hour's price bar. The prompt contains:
 - **The bot's current rules,** with every number taken from the live settings:
   - entry: the trend filter and the four-part setup score;
   - stop, exits and size;
-  - the AI news check;
+  - the AI pre-trade check, which sees only the bot's own numbers and no news;
   - how paper fills work.
 - **The trade:**
   - times in UTC and in Sydney, Tokyo, London and New York;
@@ -30,7 +30,7 @@ the exit hour's price bar. The prompt contains:
   - the H4 trend, the setup-score parts and the position in the 20-hour range;
   - its indicators;
   - its sessions and warnings;
-  - the AI news check's verdict;
+  - the AI check's verdict;
   - the spread it paid.
 - **Hourly prices** from a day before entry to the exit, in R. The hour that set the stop and the
   entry and exit hours are marked.

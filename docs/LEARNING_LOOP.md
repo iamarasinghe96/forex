@@ -18,7 +18,7 @@ Telegram. No VPS login and no code editing are needed. Real-money trading stays 
      with fresh scores, so trades taken under different rules are never mixed. Risk and learning
      changes keep the version. Trades closed before versions existed are listed as `legacy`.
 2. **Every closed trade is explained.** The AI provider (Groq/Gemini/OpenRouter, the same ones
-   used for news checks) writes why it won or lost and a lesson. Telegram receives:
+   used for the pre-trade AI check) writes why it won or lost and a lesson. Telegram receives:
    `Trade review: EURUSD SHORT WIN +1.45 R ... Why: ... Lesson: ... Score EURUSD|TREND_DOWN: 12 trades ...`
    If no provider answers, the score is still updated.
 3. **Reliably losing buckets trade smaller.** A bucket shrinks new trades (to as little as 25% of

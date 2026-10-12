@@ -29,6 +29,7 @@ from zoneinfo import ZoneInfo
 from forex.config import AppConfig
 from forex.domain import Candle
 from forex.journal import JournalEvent, JournalStore
+from forex.learning import strategy_version
 from forex.loss_review import (
     MARKET_EVENTS,
     _d,
@@ -36,9 +37,11 @@ from forex.loss_review import (
     _f,
     _price,
     _side,
+    changes_text,
     clock_line,
     pip_size,
     research_text,
+    sizing_lines,
     strategy_lines,
 )
 
@@ -71,6 +74,8 @@ class Trade:
     candidate: Mapping[str, Any]
     review: Mapping[str, Any]
     spread_pips: float | None
+    raw: Mapping[str, Any]                # The journal record (decision provenance, intent).
+    version: str                          # Settings version when the trade was taken.
 
     @property
     def sign(self) -> int:
@@ -171,7 +176,8 @@ def _trade(journal: JournalStore, event: JournalEvent, opened_event: JournalEven
         str(p.get("reason", "?")) if closed else "OPEN",
         _d(p.get("pnl_aud")) if closed else _d(quote.get("unrealized_pnl_aud")),
         _d(p.get("balance")) if closed else None, candidate,
-        (provenance.get("context_review") or {}).get("review") or {}, _spread(journal, intent))
+        (provenance.get("context_review") or {}).get("review") or {}, _spread(journal, intent), p,
+        str((provenance.get("candidate") or {}).get("strategy_version") or "unknown"))
 
 
 def load_trades(journal: JournalStore, since: datetime) -> tuple[list[Trade], list[Trade], list[Trade]]:
@@ -367,6 +373,52 @@ def comparison_lines(closed: Sequence[Trade], paths: Mapping[str, Excursion]) ->
             *[f"| {name} | {average(wins, m)} | {average(losses, m)} |" for name, m in measures]]
 
 
+BLOCK_NAMES = {
+    "CONFIGURED_MAXIMUM_OPEN_POSITIONS": "maximum open trades reached",
+    "CONFIGURED_MAXIMUM_SIMULTANEOUS_RISK": "total open-risk cap reached",
+    "CONFIGURED_MAXIMUM_SAME_DIRECTION_USD_RISK": "US-dollar direction risk cap reached",
+    "CONFIGURED_DAILY_LOSS_CIRCUIT_BREAKER": "daily loss circuit",
+    "BROKER_MINIMUM_VOLUME_EXCEEDS_RISK_BUDGET": "even 0.01 lots would exceed the risk budget",
+    "INSUFFICIENT_FREE_MARGIN_AT_ACCOUNT_LEVERAGE": "not enough free margin",
+    "STRUCTURAL_STOP_ON_WRONG_SIDE": "stop on the wrong side of the price",
+    "BROKER_MINIMUM_STOP_DISTANCE_VIOLATED": "stop closer than the broker allows",
+    "OBJECTIVE_BELOW_CONFIGURED_MINIMUM_R": "target below the minimum reward:risk",
+    "CONVICTION_BELOW_CONFIGURED_MINIMUM": "confidence below the minimum",
+}
+
+
+def signal_lines(journal: JournalStore, since: datetime) -> list[str]:
+    """What happened to every setup that passed the entry rules in the period (from the bot's records)."""
+    candidates = journal.of_kind("PAPER", "candidate", since=since, limit=100_000)
+    if not candidates:
+        return ["- No setups passed the entry rules in this period."]
+    outcomes: dict[str, int] = defaultdict(int)
+    for event in journal.of_kind("PAPER", "no_trade", since=since, limit=100_000):
+        if str(event.payload.get("reason", "")).startswith("Already holding"):
+            outcomes["the pair already had an open trade"] += 1
+    for event in journal.of_kind("PAPER", "hard_risk_block", since=since, limit=100_000):
+        codes = ((event.payload.get("risk") or {}).get("reasons") or [])
+        names = [BLOCK_NAMES.get(str(code), str(code)) for code in codes] or [str(event.payload.get("reason", "?"))]
+        outcomes["risk limit: " + ", ".join(names)] += 1
+    for event in journal.of_kind("PAPER", "context_rejection", since=since, limit=100_000):
+        status = str((event.payload.get("review") or {}).get("status", "?"))
+        outcomes[{"CONTEXT_REJECTED": "rejected by the AI check",
+                  "REDUCED_BELOW_MINIMUM": "AI check cut it below 0.01 lots",
+                  "LEARNING_SKIPPED": "skipped by the learning loop"}.get(status, f"not traded ({status})")] += 1
+    reviews = journal.of_kind("PAPER", "context_review", since=since, limit=100_000)
+    statuses: dict[str, int] = defaultdict(int)
+    for event in reviews:
+        statuses[str((event.payload.get("review") or {}).get("status", "?"))] += 1
+    traded = len(journal.of_kind("PAPER", "execution", since=since, limit=100_000))
+    lines = [f"- Setups that passed the entry rules: {len(candidates)}. Traded: {traded}.",
+             *[f"- Not traded, {name}: {count}" for name, count in sorted(outcomes.items(), key=lambda i: -i[1])]]
+    if statuses:
+        lines.append("- AI check verdicts (numbers only, no news): "
+                     + ", ".join(f"{name} {count}" for name, count in sorted(statuses.items(), key=lambda i: -i[1]))
+                     + ".")
+    return lines
+
+
 def overlap_lines(trades: Sequence[Trade], now: datetime) -> list[str]:
     """Trades opened while others were open, with what was already open (same-theme risk)."""
     lines = []
@@ -422,7 +474,8 @@ def path_rows(trade: Trade, candles: Sequence[Candle], now: datetime) -> list[st
     return lines if len(lines) > 2 else ["No stored hourly prices cover this trade."]
 
 
-def detail_lines(number: int, trade: Trade, path: Excursion, candles: Sequence[Candle], now: datetime) -> list[str]:
+def detail_lines(number: int, trade: Trade, path: Excursion, candles: Sequence[Candle], now: datetime,
+                 journal: JournalStore, current_version: str) -> list[str]:
     pip = pip_size(trade.symbol)
     title = (f"### Trade #{number}: {trade.label}, "
              + (f"{_num(trade.r)} R ({_money(trade.pnl)}), closed by {trade.exit_reason}" if trade.closed else
@@ -447,9 +500,10 @@ def detail_lines(number: int, trade: Trade, path: Excursion, candles: Sequence[C
                      f"direction (1 = {'bought at the high' if trade.sign > 0 else 'sold at the low'}). "
                      f"{_num(trade.ema_distance, '+.2f')} ATR from the H1 20 EMA in the trade's direction. "
                      f"RSI {_num(trade.feature('h1_rsi'), '.0f')}. Sessions: {', '.join(trade.sessions)}.")
-    if trade.review:
-        lines.append(f"- **AI news check:** {trade.review.get('status')}: "
-                     f"\"{str(trade.review.get('rationale', ''))[:240]}\"")
+    lines += sizing_lines(trade.raw, journal)
+    if trade.version != current_version:
+        lines.append(f"- **Settings version at entry:** {trade.version} (now {current_version}; see the change "
+                     "history above).")
     lines.append(f"- **Before entry:** price had moved {_num(path.prior_move_atr, '+.1f')} × ATR in the trade's "
                  "direction over the previous 24 hours.")
     lines.append(f"- **While open:** best {_num(path.best)} R"
@@ -501,12 +555,13 @@ def build_lookback_prompt(config: AppConfig, journal: JournalStore, candles: Cal
         (f"Written by the paper bot at {now:%Y-%m-%d %H:%M} UTC (prompt {PROMPT_VERSION}). All prices are the "
         "broker's demo bid prices; R = result in units of the trade's first stop distance."), "",
         INSTRUCTIONS_FILE.read_text(encoding="utf-8").strip(), "", research_text(), "",
-        "## How the bot works now", "", *strategy_lines(config), "",
+        "## How the bot works now", "", *strategy_lines(config), "", changes_text(), "",
         "## Results at a glance", "", *results_lines(closed, open_now, everything, config, journal), "",
         "## Breakdown of the closed trades",
         *(breakdown_lines(closed, config) if closed else ["", "- No trades closed in this period."]), "",
         "## Winners against losers (averages of what the bot measured at entry)", "",
         *(comparison_lines(closed, paths) if closed else ["- No trades closed in this period."]), "",
+        "## Signals considered but not traded", "", *signal_lines(journal, since), "",
         "## Trades open at the same time", "",
         *(overlap_lines(trades, now) if trades else ["- No trades in this period."]), "",
         "## Every trade in the period", "",
@@ -516,7 +571,8 @@ def build_lookback_prompt(config: AppConfig, journal: JournalStore, candles: Cal
         sections += [f"Details follow for the latest {len(detailed)} trades only.", ""]
     first_detailed = len(trades) - len(detailed) + 1
     for number, trade in enumerate(detailed, first_detailed):
-        sections += [*detail_lines(number, trade, paths[trade.trade_id], bars[trade.symbol], now), ""]
+        sections += [*detail_lines(number, trade, paths[trade.trade_id], bars[trade.symbol], now, journal,
+                                   strategy_version(config)), ""]
     sections += [
         "## Market clock in this period", "", *clock_summary(since.date(), now.date()), "",
         "## Not included", "",

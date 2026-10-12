@@ -30,6 +30,8 @@ from forex.learning import TradeFacts, price_path, strategy_version, trade_facts
 PROMPT_VERSION = "loss-review-chatgpt-v1"
 # What has already been tested, shared by every review prompt; the developer keeps it current.
 RESEARCH_FILE = Path(__file__).parent / "prompts" / "research-so-far.md"
+# Dated changes to the live bot, so each trade is judged by the rules in force when it was opened.
+CHANGES_FILE = Path(__file__).parent / "prompts" / "bot-changes.md"
 DELAY = timedelta(hours=1)      # Wait for the exit hour's bar, so the price table includes it.
 LOOKBACK = timedelta(days=14)   # Older losses (e.g. from before this feature) get no prompt.
 BARS_BEFORE, BARS_AFTER, MAX_OPEN_BARS = 24, 24, 96
@@ -89,6 +91,10 @@ def research_text() -> str:
     return RESEARCH_FILE.read_text(encoding="utf-8").strip()
 
 
+def changes_text() -> str:
+    return CHANGES_FILE.read_text(encoding="utf-8").strip()
+
+
 def strategy_lines(config: AppConfig, facts: TradeFacts | None = None) -> list[str]:
     """The live rules in plain words, with every number taken from the settings."""
     a, p, r, lc, ctx = config.analysis, config.paper, config.risk, config.learning, config.context
@@ -129,20 +135,26 @@ def strategy_lines(config: AppConfig, facts: TradeFacts | None = None) -> list[s
         "0 if it points the other way)."),
         (f"   - **structure:** where the last H1 close sits in the high–low range of the {a.structure_window} H1 bars "
         "before it. It is highest for buys at or above the top of the range and for sells at or below the bottom, "
-        "and 0 in the opposite half. **So the bot buys strength and sells weakness; it does not wait for a "
-        "pullback.**"),
+        "and 0 in the opposite half. It is not capped at 1: a close beyond that range scores more (e.g. 1.17), "
+        "which lifts the score for entries after a breakout. **So the bot buys strength and sells weakness; it "
+        "does not wait for a pullback.**"),
         f"   - **pullback_coherence:** closeness to the H1 {a.ema_fast} EMA (1 = on it, 0 = 3 ATR away).",
         f"3. Label only: SWING if H4 strength ≥ {a.swing_trend_threshold:g}, otherwise DAY. Both use the same exits.",
         "4. Limits:",
         f"   - at most {p.max_positions_per_pair} open trade(s) per pair;",
         f"   - at most {r.max_concurrent_positions} open trades;",
         f"   - at most {r.max_simultaneous_risk_percent:g}% of the balance at risk in total;",
+        (f"   - at most {r.max_usd_direction_risk_percent:g}% at risk betting the same way on the US dollar "
+         "(all three pairs contain USD);" if r.max_usd_direction_risk_percent else
+         "   - no limit on how much of that risk bets the same way on the US dollar (all three pairs contain "
+         "USD, so a EURUSD or GBPUSD sell and a USDJPY buy are one bet);"),
         (f"   - if equity falls {r.daily_loss_percent:g}% below the day's opening balance, every trade is closed "
          "and none opens until the next trading day (New York close)."),
-        ("5. AI news check before entry. A language model (" + providers + ") reads the trade and current "
-         "context and may approve, shrink or reject it. It can never enlarge a trade." if ctx.enabled else
-         "5. No AI news check before entry."),
-        "   The bot has no economic calendar and no live news feed.",
+        ("5. AI check before entry. A language model (" + providers + ") reviews the bot's own numbers for the "
+         "trade and may approve, shrink or reject it; it can never enlarge a trade. **It is given no news, "
+         "headlines or economic calendar, and its instructions say missing news is neutral, so it cannot react "
+         "to events.**" if ctx.enabled else "5. No AI check before entry."),
+        "   The bot has no economic calendar and no live news feed of any kind.",
         "",
         "**Stop, exits and size**",
         (f"- **Stop:** for buys, the lowest low of the {a.structure_window} H1 bars before the signal bar; for "
@@ -171,6 +183,43 @@ def _plan(provenance: Mapping[str, Any]) -> Mapping[str, Any]:
     review = ((provenance.get("context_review") or {}).get("review") or {})
     risk = ((provenance.get("risk_decision") or {}).get("risk") or {})
     return review.get("plan") or risk.get("permitted_position_plan") or {}
+
+
+def sizing_lines(payload: Mapping[str, Any], journal: JournalStore) -> list[str]:
+    """How the trade's size was set: requested risk, lot rounding and margin, AI check, learning."""
+    provenance: Mapping[str, Any] = (payload["decision_provenance"]
+                                     if isinstance(payload.get("decision_provenance"), Mapping) else {})
+    risk = (provenance.get("risk_decision") or {}).get("risk") or {}
+    plan = risk.get("permitted_position_plan") or {}
+    review = (provenance.get("context_review") or {}).get("review") or {}
+    requested, planned = _f(plan.get("requested_risk_percent")), _f(plan.get("actual_risk_percent"))
+    amount, percent = _d(plan.get("requested_risk_amount")), _d(plan.get("requested_risk_percent"))
+    balance = amount / percent if amount and percent else None
+    lines = []
+    if requested is not None and planned is not None:
+        lines.append(f"- **Size:** the rules asked for {requested * 100:.1f}% of the balance; after rounding down to "
+                     f"whole 0.01 lots (and the margin cap, from 4 Oct) the plan was {planned * 100:.1f}% "
+                     f"({plan.get('volume')} lots).")
+    status = review.get("status")
+    if status:
+        reviewed = (review.get("plan") or {}).get("volume")
+        lines.append(f"- **AI check (numbers only, no news):** {status}"
+                     + (f", size cut to {reviewed} lots" if status == "REDUCED" and reviewed else "")
+                     + f": \"{str(review.get('rationale', ''))[:300]}\"")
+    intent: Mapping[str, Any] = payload["intent"] if isinstance(payload.get("intent"), Mapping) else {}
+    learning = journal.find("PAPER", "learning_decision", str(intent.get("candidate_id", ""))) if intent else None
+    sizing = (learning.payload.get("sizing") or {}) if learning else {}
+    factor = _f(sizing.get("factor"))
+    if factor is not None and factor < 1:
+        lines.append(f"- **Learning:** size multiplied by {factor:.2f} ({str(sizing.get('reason', ''))[:160]}).")
+    existing = _d(risk.get("existing_portfolio_risk"))
+    usd = {str(pair[0]): pair[1] for pair in ((risk.get("exposure") or {}).get("usd_directional_risk") or [])
+           if isinstance(pair, (list, tuple)) and len(pair) == 2}
+    if existing is not None and balance:
+        lines.append(f"- **Open risk before this trade:** A${existing:,.2f} ({existing / balance * 100:.1f}% of the "
+                     "balance) at the other trades' current stops. Risk betting on a stronger US dollar after it: "
+                     f"A${_d(usd.get('USD_LONG')) or 0:,.2f}; on a weaker dollar: A${_d(usd.get('USD_SHORT')) or 0:,.2f}.")
+    return lines
 
 
 def trade_lines(event: JournalEvent, facts: TradeFacts) -> list[str]:
@@ -250,10 +299,7 @@ def entry_lines(event: JournalEvent, facts: TradeFacts, journal: JournalStore) -
         opposing = [e.get("detail") or e.get("code") for e in candidate.get("opposing_evidence") or []]
         if opposing:
             lines.append(f"- **Warnings the bot recorded:** {'; '.join(str(o) for o in opposing)}.")
-    review = (provenance.get("context_review") or {}).get("review") or {}
-    if review:
-        lines.append(f"- **AI news check:** {review.get('status')} by {review.get('provider') or 'rules'}: "
-                     f"\"{str(review.get('rationale', ''))[:400]}\"")
+    lines += sizing_lines(event.payload, journal)
     score = candidate_event.get("setup_score") or {}
     if score.get("status") == "available":
         lines.append(f"- Setup-score model (shadow only, not used for sizing): {score.get('score_0_100')}/100.")
@@ -393,7 +439,7 @@ def build_loss_prompt(config: AppConfig, instructions: str, event: JournalEvent,
         title, "",
         f"Written by the paper bot at {now:%Y-%m-%d %H:%M} UTC (prompt {PROMPT_VERSION}).", "",
         instructions.strip(), "", research_text(), "",
-        "## How the bot works now", "", *strategy_lines(config, facts), "",
+        "## How the bot works now", "", *strategy_lines(config, facts), "", changes_text(), "",
         "## The losing trade", "", *trade_lines(event, facts), "",
         "## Why the bot took it (its own record at the time)", "", *entry_lines(event, facts, journal), "",
         "## Hour-by-hour prices (the broker's demo bid prices)", "", *price_lines(candles, facts), "",

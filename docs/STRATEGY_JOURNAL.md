@@ -330,7 +330,7 @@ USDJPY about +414 (to 158.4, then -154 on 25 Sep and sideways), USDCHF about +25
 Choppy periods (GBPUSD and USDJPY from 28 Sep) were correctly labelled RANGE/TRANSITION: no trades.
 
 **Rough simulated result** (one position per pair, entry at the hour's close, structural stop,
-1.5R target, stop to entry at +1R, research cost assumptions; risk checks and news review not
+1.5R target, stop to entry at +1R, research cost assumptions; risk checks and the AI pre-trade check not
 applied):
 
 | Pair | Closed trades | Net |

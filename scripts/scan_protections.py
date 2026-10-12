@@ -229,7 +229,7 @@ def main() -> int:
           "\nforces 0.01 lot, so a trade can risk more than 5% (see max risk%)."
           "\nIndented rows remove the conviction and min-lot limits on top of the row above."
           "\nOpen trades are marked to the last close."
-          "\nNot modelled: AI news review, daily loss limit, spread changes, slippage.")
+          "\nNot modelled: the AI pre-trade check (it gets no news), daily loss limit, spread changes, slippage.")
     return 0
 
 

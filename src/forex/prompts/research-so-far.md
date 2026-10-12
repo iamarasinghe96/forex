@@ -29,11 +29,15 @@ Already tested; each one **failed** unless stated otherwise:
 **Conclusion so far:** the hourly entry rules add no skill. The small profit comes from being in
 the direction of the H4 trend, mostly USDJPY buys during 2021–2024.
 
-**Not tested yet:**
-- where in the recent range to enter: buying dips and selling rallies, instead of buying highs
-  and selling lows;
-- session or time-of-day filters;
-- stop buffers beyond the 20-hour extreme;
-- scheduled-news (economic calendar) filters;
+**Queued for testing, not tested yet** (from earlier reviews; build on them rather than repeating them):
+- pullback and re-acceleration entries: in the H4 trend, enter only when the range position in the
+  trade's direction is 0.40–0.70 and the H1 MACD has turned back the trade's way;
+- a "no chasing" filter after large moves;
+- no new entries from 00:00 to 06:00 UTC;
+- a stop buffer of 0.25–1.0 × ATR beyond the 20-hour extreme, at the same A$ risk;
+- capping the setup score's "structure" part at 1;
+- a cap on risk betting the same way on the US dollar, built but off;
+- exit variants: a fixed 2 R target, or a 2 R or 4 R ATR trail;
+- scheduled-news and central-bank event filters (needs a historical calendar and news archive);
 - yen-intervention risk rules;
 - other currency pairs.

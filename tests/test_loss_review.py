@@ -57,6 +57,9 @@ def test_a_loss_gets_one_self_contained_prompt_an_hour_later(tmp_path: Path, mon
                  "EVIDENCE", "Rules to test (max 3)", "Started at A$"):
         assert part in text, part
     assert "first stop 1.09000" in text and "Sydney" in text
+    assert "No AI check before entry" in text and "AI news check" not in text  # The fixture switches it off.
+    assert "Changes to the live bot since this paper account started" in text
+    assert "**AI check (numbers only, no news):** UNAVAILABLE" in text  # The fixture runs without a provider.
     assert "token" not in text.lower() and str(runtime.config.broker.login) not in text  # No account identifiers.
 
 

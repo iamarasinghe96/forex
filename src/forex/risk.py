@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_FLOOR, Decimal
 from enum import Enum
 from typing import ClassVar
@@ -49,6 +49,9 @@ class RiskPolicy:
     # Cap volume so the account's margin (notional / account leverage, for all open positions plus
     # the new one) fits within equity, as a real broker would. Off keeps the older paper sizing.
     enforce_margin: bool = False
+    # Optional cap on open risk betting the same way on the US dollar (a EURUSD or GBPUSD sell and a
+    # USDJPY buy are one bet). Fraction of balance; None keeps the earlier behaviour.
+    max_usd_direction_risk: Decimal | None = None
 
     implementation_version: ClassVar[str] = RISK_POLICY_IMPLEMENTATION_VERSION
 
@@ -69,6 +72,9 @@ class RiskPolicy:
             raise ValueError("conviction risk percentages must be within 0..1")
         if not self.low_risk_percent <= self.medium_risk_percent <= self.high_risk_percent:
             raise ValueError("conviction risk percentages must be non-decreasing")
+        cap = self.max_usd_direction_risk
+        if cap is not None and (not cap.is_finite() or not Decimal(0) < cap <= Decimal(1)):
+            raise ValueError("US-dollar direction risk cap must be within 0..1")
 
     @property
     def policy_id(self) -> str:
@@ -88,6 +94,8 @@ class RiskPolicy:
         }
         if self.enforce_margin:  # Only when on, so existing policy identities are unchanged.
             settings["enforce_margin"] = True
+        if self.max_usd_direction_risk is not None:  # Likewise only when set.
+            settings["max_usd_direction_risk"] = _canonical_decimal(self.max_usd_direction_risk)
         canonical = json.dumps(settings, sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
         return f"{self.implementation_version}-{fingerprint}"
@@ -121,6 +129,7 @@ class RiskBlockReason(str, Enum):
     CIRCUIT_BREAKER = "CONFIGURED_DAILY_LOSS_CIRCUIT_BREAKER"
     KILL_SWITCH = "KILL_SWITCH_ACTIVE"
     INSUFFICIENT_MARGIN = "INSUFFICIENT_FREE_MARGIN_AT_ACCOUNT_LEVERAGE"
+    USD_CONCENTRATION = "CONFIGURED_MAXIMUM_SAME_DIRECTION_USD_RISK"
 
 
 @dataclass(frozen=True)
@@ -401,6 +410,14 @@ def _usd_direction(symbol: str, side: Side) -> str | None:
     return None
 
 
+def usd_direction_risk(positions: tuple[OpenRiskPosition, ...], symbol: str, side: Side) -> Decimal:
+    """Open risk (at current stops) already betting the same way on the US dollar as a new trade."""
+    direction = _usd_direction(symbol, side)
+    if direction is None:
+        return Decimal(0)
+    return sum((p.remaining_risk for p in positions if _usd_direction(p.symbol, p.side) == direction), Decimal(0))
+
+
 def exposure_diagnostics(positions: tuple[OpenRiskPosition, ...], proposal_symbol: str | None = None,
                          proposal_side: Side | None = None,
                          proposal_risk: Decimal = Decimal(0)) -> ExposureDiagnostics:
@@ -482,8 +499,14 @@ def decide_risk(candidate: TradeCandidate, account: AccountState, spec: SymbolSp
         if plan is not None and portfolio.existing_risk + plan.actual_risk_amount > \
                 account.balance * policy.max_simultaneous_risk:
             status, reasons = DecisionStatus.HARD_RISK_BLOCK, (RiskBlockReason.PORTFOLIO_RISK,)
+        if (plan is not None and status is DecisionStatus.ELIGIBLE and policy.max_usd_direction_risk is not None
+                and usd_direction_risk(portfolio.positions, candidate.symbol, candidate.side) + plan.actual_risk_amount
+                > account.balance * policy.max_usd_direction_risk):
+            status, reasons = DecisionStatus.HARD_RISK_BLOCK, (RiskBlockReason.USD_CONCENTRATION,)
     proposal = plan.actual_risk_amount if plan else Decimal(0)
     exposure = exposure_diagnostics(portfolio.positions, candidate.symbol, candidate.side, proposal)
+    if reasons == (RiskBlockReason.USD_CONCENTRATION,):
+        exposure = replace(exposure, correlation_veto_applied=True)
     canonical_positions = sorted(
         [{"symbol": p.symbol, "side": p.side.value, "entry": str(p.entry),
           "stop": str(p.current_stop), "volume": str(p.volume),

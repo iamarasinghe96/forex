@@ -237,7 +237,7 @@ per_closed_trade:
   telegram: "Trade review: <pair> <side> WIN/LOSS <R> ... Why ... Lesson ... Score <pair|regime> n, score, confidence"
 sizing_feedback:
   buckets with n>=min_trades(10): weighted score s; factor = clamp(1 + 2*s, min_factor 0.25, 1.0); optional skip if s < skip_below_r
-  never > 1 (configured risk is ceiling); applied after AI news review; Layer-5 ceiling preserved in execution
+  never > 1 (configured risk is ceiling); applied after the AI pre-trade check (no news input); Layer-5 ceiling preserved in execution
 strategy_change_channel:
   /review -> bot sends prompt file (instructions, settings, scoreboard, last 20 reviews, JSON schema)
   operator pastes into an LLM; pastes reply back -> parse_patch (fenced or raw JSON with "forex_patch":1)

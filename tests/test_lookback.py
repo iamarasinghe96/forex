@@ -33,9 +33,15 @@ def candidate(symbol: str, side: str, range_position: float, trend: float, atr: 
 
 
 def trade(journal: JournalStore, trade_id: str, symbol: str, side: str, opened: datetime, entry: str,
-          stop: str, cand: dict[str, Any], close: tuple[datetime, str, str, str, str] | None = None) -> None:
-    provenance = {"candidate": {"candidate": cand, "strategy_version": "4977cb76"},
-                  "context_review": {"review": {"status": "APPROVED", "rationale": "No conflicting news."}}}
+          stop: str, cand: dict[str, Any], close: tuple[datetime, str, str, str, str] | None = None,
+          version: str = "4977cb76") -> None:
+    plan = {"requested_risk_percent": "0.05", "actual_risk_percent": "0.0257", "volume": "0.02",
+            "requested_risk_amount": "50.00"}
+    risk = {"permitted_position_plan": plan, "existing_portfolio_risk": "0",
+            "exposure": {"usd_directional_risk": [["USD_LONG", "25.70"], ["USD_SHORT", "0"]]}}
+    provenance = {"candidate": {"candidate": cand, "strategy_version": version},
+                  "risk_decision": {"risk": risk},
+                  "context_review": {"review": {"status": "APPROVED", "rationale": "No conflicting evidence."}}}
     intent = {"stop": stop, "side": side, "candidate_id": "c-" + trade_id}
     position = {"client_id": trade_id, "symbol": symbol + ".a", "side": side, "entry": entry, "stop": stop,
                 "target": "1.0", "volume": "0.10"}
@@ -64,7 +70,18 @@ def journal(tmp_path: Path) -> JournalStore:
     # A EURUSD sell that trailed into profit, a USDJPY buy stopped out, and a EURUSD sell still open.
     trade(store, "win", "EURUSD", "SHORT", T0 + timedelta(hours=2), "1.12000", "1.12500",
           candidate("EURUSD", "SHORT", 0.1, 0.72, 0.0010), (T0 + timedelta(hours=30), "1.11400", "37.41", "1037.41",
-                                                            "1.11400"))
+                                                            "1.11400"), version="0ld0ld00")
+    # What happened to the setups: one per trade, one repeat while holding, one blocked, one AI rejection.
+    for hour, kind, payload in ((2, "candidate", {}), (52, "candidate", {}), (54, "candidate", {}),
+                                (55, "candidate", {}), (55, "no_trade", {"reason": "Already holding 1 EURUSD position(s)"}),
+                                (60, "candidate", {}), (60, "hard_risk_block",
+                                                        {"risk": {"reasons": ["CONFIGURED_MAXIMUM_SIMULTANEOUS_RISK"]}}),
+                                (61, "candidate", {}), (61, "context_rejection", {"review": {"status": "CONTEXT_REJECTED"}}),
+                                (61, "context_review", {"review": {"status": "CONTEXT_REJECTED"}})):
+        store.append("PAPER", kind, f"{kind}-{hour}", payload, T0 + timedelta(hours=hour))
+    for hour in (2, 52, 54):
+        store.append("PAPER", "context_review", f"approved-{hour}", {"review": {"status": "APPROVED"}},
+                     T0 + timedelta(hours=hour))
     trade(store, "loss", "USDJPY", "LONG", T0 + timedelta(hours=52), "158.427", "157.913",
           candidate("USDJPY", "LONG", 0.82, 0.673, 0.115), (T0 + timedelta(hours=56, minutes=15), "157.890",
                                                             "-53.70", "983.71", "157.913"))
@@ -107,6 +124,17 @@ def test_lookback_reports_results_breakdowns_and_each_trade(journal: JournalStor
     assert "3 of these 3 trades were" in text                  # All three bet on a stronger US dollar.
     assert "London open: 07:00 UTC" in text                    # Early October: British summer time.
     assert "23011822" not in text                              # No account number.
+    assert "Changes to the live bot since this paper account started" in text
+    assert "It is given no news, headlines or economic calendar" in text
+    assert "the rules asked for 5.0% of the balance" in text and "the plan was 2.6% (0.02 lots)" in text
+    assert "**AI check (numbers only, no news):** APPROVED" in text
+    assert "Open risk before this trade:** A$0.00 (0.0% of the balance)" in text
+    assert "Settings version at entry:** 0ld0ld00" in text and text.count("Settings version at entry") == 1
+    assert "Setups that passed the entry rules: 6. Traded: 3." in text
+    assert "Not traded, the pair already had an open trade: 1" in text
+    assert "Not traded, risk limit: total open-risk cap reached: 1" in text
+    assert "Not traded, rejected by the AI check: 1" in text
+    assert "AI check verdicts (numbers only, no news): APPROVED 3, CONTEXT_REJECTED 1." in text
 
 
 def test_lookback_period_and_empty_case(journal: JournalStore) -> None:

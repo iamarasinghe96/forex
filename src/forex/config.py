@@ -146,6 +146,8 @@ class RiskConfig(BaseModel):
     target_trades_per_week: dict[str, int]
     # Size trades so their margin (notional / account leverage) fits the account's free margin.
     enforce_margin: bool = True
+    # Optional cap on open risk betting the same way on the US dollar; None = off.
+    max_usd_direction_risk_percent: float | None = Field(default=None, gt=0, le=100, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def valid_conviction_policy(self) -> RiskConfig:

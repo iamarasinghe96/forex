@@ -996,3 +996,34 @@ Break-even means |R| < 0.1.
 trade; period filtering and the empty case; DST changes in the market clock; `/lookback`
 end-to-end with the real paper runtime, including the day limit). Ruff clean; mypy shows only
 the two Windows-only errors.
+
+### Lookback review fact-check and follow-ups (2026-10-13)
+
+ChatGPT reviewed the 29 Sep – 13 Oct lookback: 6 closed trades, +2.51 R, A$+57.35, inside the
+range expected by chance. Fact-check and ledger: docs/LOSS_LESSONS.md.
+
+**Corrected:**
+- **"One-per-pair rule violated" was wrong.** The rule was added at 14:26 UTC on 1 Oct because of
+  the four EURUSD sells opened at 09:00–12:00 UTC that day. The prompts now carry a dated change
+  history (`src/forex/prompts/bot-changes.md`).
+- **The AI pre-trade check was described as a "news check", but it receives no news.** Its only
+  input is the bot's own numbers, and missing news is treated as neutral; no news source exists
+  in the code (macro context is always unavailable). Wording is corrected in the prompts, docs
+  and scan output.
+
+**Added to the review prompts:**
+- **Per-trade sizing steps:** requested risk; the plan after 0.01-lot rounding and the margin cap;
+  the AI verdict; the learning factor; open risk and US-dollar direction risk at entry.
+- **The structure part can exceed 1.**
+- **The live US-dollar exposure**, or the lack of a limit on it.
+
+The lookback also counts the setups that were not traded, by reason, and the AI verdicts.
+
+**New, off by default:** `risk.max_usd_direction_risk_percent`.
+- When set, a trade is blocked if open risk at current stops in its US-dollar direction, plus its
+  own risk, would exceed the cap; trades at break-even count as 0.
+- New reason: `CONFIGURED_MAXIMUM_SAME_DIRECTION_USD_RISK`.
+- The policy identity changes only when the cap is set. Turning it on is the operator's decision.
+
+**Queued tests** (C1–C9 in the ledger) need historical data. The cloud network policy blocks
+`datafeed.dukascopy.com`.

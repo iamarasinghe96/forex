@@ -25,4 +25,6 @@ def policy_from_config(config: RiskConfig) -> RiskPolicy:
         medium_risk_percent=Decimal(str(risks["medium"])) / 100,
         high_risk_percent=Decimal(str(risks["high"])) / 100,
         enforce_margin=config.enforce_margin,
+        max_usd_direction_risk=(None if config.max_usd_direction_risk_percent is None else
+                                Decimal(str(config.max_usd_direction_risk_percent)) / 100),
     )
