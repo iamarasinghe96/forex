@@ -1043,3 +1043,13 @@ can bet the same way.
 - The change history in the review prompts records it.
 
 **Not yet tested on history.** It is a risk preference; the C8 portfolio test is still owed.
+
+### Daily Telegram summary reworded as a named recap (2026-10-13)
+
+The operator twice read the 11:00 Sydney daily summary as a new loss. Each time it repeated a loss
+already reported: USDJPY on 7 Oct, and GBPUSD on 12 Oct (A$-53.17).
+
+It now reads, for example: "Daily recap for Mon 12 Oct (UTC day). Already reported when they
+closed, not new: 1 trade(s) closed (0 won, 1 lost): GBPUSD Sell STOP -1.00 R (A$-53.17, closed
+06:28 UTC). Day total A$-53.17." Days without trades say "no trades closed". There is no change
+to trading. Tests: 288 passed.

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Mapping
 from contextlib import closing
+from datetime import UTC, datetime
 from threading import Event
+from typing import Any
 
 from forex.alerts import TelegramAlerter
 from forex.journal import JournalStore
+from forex.learning import trade_facts
 
 
 class NotificationWorker:
@@ -24,10 +28,7 @@ class NotificationWorker:
         count = 0
         for event in self.journal.events("PAPER", after_sequence=cursor, limit=100):
             if event.kind == "daily_summary":
-                p = event.payload
-                self.alerter.send(f"Daily summary {event.entity_id}: {p.get('closed_trades', 0)} trades closed "
-                                  f"({p.get('wins', 0)} won, {p.get('losses', 0)} lost), "
-                                  f"P&L A${float(p.get('realized_pnl_aud', 0)):+.2f}.")
+                self.alerter.send(self.daily_recap(event.entity_id, event.payload))
                 count += 1
             elif event.kind == "loss_prompt":
                 p = event.payload
@@ -61,6 +62,29 @@ class NotificationWorker:
             with closing(sqlite3.connect(self.journal.path)) as db, db:
                 db.execute("UPDATE notification_cursor SET sequence=? WHERE id=1", (event.sequence,))
         return count
+
+    def daily_recap(self, day: str, summary: Mapping[str, Any]) -> str:
+        """Yesterday's closed trades by name, marked as a recap so it is not read as a new loss."""
+        try:
+            start = datetime.fromisoformat(day).replace(tzinfo=UTC)
+        except ValueError:
+            start = None
+        trades = [e for e in self.journal.of_kind("PAPER", "trade_closed", since=start, limit=500)
+                  if e.observed_at_utc.date().isoformat() == day] if start else []
+        label = f"{start:%a %d %b}" if start else day
+        if not trades and not summary.get("closed_trades"):
+            return f"Daily recap for {label} (UTC day): no trades closed."
+        parts = []
+        for trade in trades:
+            facts = trade_facts(trade.entity_id, trade.payload)
+            side = "Buy" if str(trade.payload.get("direction")) == "LONG" else "Sell"
+            parts.append(f"{str(trade.payload.get('symbol', '?')).split('.')[0]} {side} {trade.payload.get('reason', '')} "
+                         + (f"{facts.r:+.2f} R " if facts else "")
+                         + f"(A${float(trade.payload.get('pnl_aud', 0)):+.2f}, closed {trade.observed_at_utc:%H:%M} UTC)")
+        return (f"Daily recap for {label} (UTC day). Already reported when they closed, not new: "
+                f"{summary.get('closed_trades', len(trades))} trade(s) closed ({summary.get('wins', 0)} won, "
+                f"{summary.get('losses', 0)} lost)" + (": " + "; ".join(parts) if parts else "")
+                + f". Day total A${float(summary.get('realized_pnl_aud', 0)):+.2f}.")
 
     def run(self, stop: Event) -> None:
         while not stop.is_set():

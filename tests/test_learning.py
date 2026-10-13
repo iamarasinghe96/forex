@@ -273,4 +273,8 @@ def test_daily_summary_message_is_readable(tmp_path: Path) -> None:
                                                               "realized_pnl_aud": "12.5"}, NOW)
     sender = Mock()
     NotificationWorker(journal, sender).once()
-    assert sender.send.call_args.args[0] == "Daily summary 2026-10-01: 2 trades closed (1 won, 1 lost), P&L A$+12.50."
+    assert sender.send.call_args.args[0] == ("Daily recap for Thu 01 Oct (UTC day). Already reported when they "
+                                             "closed, not new: 2 trade(s) closed (1 won, 1 lost). Day total A$+12.50.")
+    journal.append("PAPER", "daily_summary", "2026-10-02", {"closed_trades": 0}, NOW)
+    NotificationWorker(journal, sender).once()
+    assert sender.send.call_args.args[0] == "Daily recap for Fri 02 Oct (UTC day): no trades closed."

@@ -132,3 +132,15 @@ def test_price_table_marks_the_stop_bar_entry_and_exit_in_r() -> None:
     assert "this hour set the stop level" in text
     assert "ENTRY at 04:00" in text and "EXIT (STOP) at 08:15" in text and "after exit" in text
     assert "| -1.12 |" in text  # The 08:00 hour's low (157.85) in R.
+
+
+def test_daily_recap_names_the_trades_it_repeats(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime, _ = closed_trade(tmp_path, monkeypatch)
+    day = NOW.date().isoformat()
+    runtime.journal.append("PAPER", "daily_summary", day, runtime.journal.summary("PAPER", day),
+                           NOW + timedelta(days=1))
+    sender = Mock()
+    NotificationWorker(runtime.journal, sender).once()
+    recap = next(c.args[0] for c in sender.send.call_args_list if c.args[0].startswith("Daily recap for Fri 02 Jan"))
+    assert "Already reported when they closed, not new: 1 trade(s) closed (0 won, 1 lost)" in recap
+    assert "EURUSD Buy STOP -1.50 R (A$-750.00, closed 00:00 UTC)" in recap
