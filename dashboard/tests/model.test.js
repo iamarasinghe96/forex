@@ -77,4 +77,13 @@ test('scorecard cards read the hourly measurements and the old strategy verdict'
   assert.equal(jpy.verdict,'Old strategy: no signal (H4 regime RANGE has no coherent setup family)');
   assert.equal(jpy.rows[2][1],'– (0 = low, 1 = high)');
   assert.deepEqual(scorecardCards(null),[]);
+  assert.equal(eur.rows.length,7);
+});
+test('scorecard cards show the previous day high and low',()=>{
+  const [card]=scorecardCards({pairs:[{symbol:'EURUSD',h4:{},h1:{},setup:{},old_strategy:{verdict:'none'},
+    day_levels:{high:1.1125,low:1.11,type:'single',to_high_atr:0.5,to_low_atr:-0.3,
+      today:{ran_high:true,ran_low:false,opens:{London:'inside','New York':'above'}}}}]});
+  assert.deepEqual(card.rows.slice(-2),[
+    ['Previous day (single break)','high 1.1125 (0.5 ATR above price) · low 1.11 (0.3 ATR above price)'],
+    ['Today so far','ran the high; London opened inside the range; New York opened above the high']]);
 });

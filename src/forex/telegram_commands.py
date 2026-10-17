@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 from forex.config import AppConfig
+from forex.day_levels import levels_report
 from forex.domain import Timeframe
 from forex.errors import OperatorError
 from forex.journal import JournalStore
@@ -44,6 +45,7 @@ HELP = (
     "/settings - settings a review may change\n"
     "/review - get the learning prompt to paste into Claude\n"
     "/scorecard - the latest hourly readings of the scoring tools for each pair\n"
+    "/levels - how price behaves around the previous day's high and low, measured on stored prices\n"
     "/loss - the latest losing trade's review prompt for ChatGPT\n"
     "/lookback - every trade of the last 14 days reviewed, as a ChatGPT prompt (/lookback 30 for 30 days)\n"
     "Paste Claude's JSON reply here - the bot checks it and shows the changes\n"
@@ -102,6 +104,15 @@ class CommandHandler:
             if not latest:
                 return [Reply("No scorecard yet. The bot writes one after each hourly analysis.")]
             return [Reply(scorecard_text(latest[-1].payload))]
+        if command == "/levels":
+            if self.journal is None:
+                return [Reply("The previous-day study needs the bot's stored prices, which are not available here.")]
+            candles = CandleStore(self.journal.path)
+            summary, full = levels_report({s: candles.load(s, Timeframe.H1) for s in self.base.broker.symbols})
+            if len(summary) > 3800:  # Telegram's message limit is 4096 characters.
+                summary = summary[:3800].rsplit("\n", 1)[0] + "\n(continued in the file)"
+            return [Reply(summary + "\n\nThe file has each pair separately and how to read the numbers.",
+                          (f"previous-day-levels-{self.clock():%Y-%m-%d}.txt", full))]
         if command == "/lookback":
             if self.journal is None:
                 return [Reply("The lookback needs the bot's trade records, which are not available here.")]

@@ -40,6 +40,7 @@ def test_scoring_only_opens_nothing_but_records_the_old_signal_and_scorecard(
                              runtime.journal)
     text = handler.handle("/scorecard")[0].text
     assert "EURUSD: H4" in text and "old strategy would BUY" in text and "not traded" in text
+    assert pair["day_levels"]["high"] is not None and "Previous day" in text  # Previous day's high/low tool.
     client = FakeClient()
     FirestoreMirror(client).write(card, {"event_count": 1}, {"event_count": 1})
     document = client.written[("modes", "PAPER", "aggregates", "scorecard")]

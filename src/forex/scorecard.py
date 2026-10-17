@@ -5,7 +5,8 @@ one. The analysis still runs every hour, and its readings are published per pair
 - the H4 trend: direction, strength, efficiency, volatility;
 - the H1 picture: range position, EMA distance, RSI, MACD, ATR;
 - the four setup-score parts;
-- what the old strategy would have done, with its stop.
+- what the old strategy would have done, with its stop;
+- the previous day's high and low, and what today has done around them (``forex.day_levels``).
 
 The scorecard is a ``scorecard`` journal event, mirrored to the dashboard. It is sent by
 ``/scorecard`` in Telegram, and it never places a trade.
@@ -13,12 +14,15 @@ The scorecard is a ``scorecard`` journal event, mirrored to the dashboard. It is
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from forex.analysis import AnalysisResult
 from forex.config import AnalysisConfig
+from forex.day_levels import levels_now, levels_text
+from forex.domain import Candle
 
 
 def _num(value: Any, digits: int = 2) -> float | None:
@@ -32,7 +36,8 @@ def pip_size(symbol: str) -> Decimal:
     return Decimal("0.01") if symbol.upper().endswith("JPY") else Decimal("0.0001")
 
 
-def scorecard_entry(symbol: str, result: AnalysisResult, config: AnalysisConfig) -> dict[str, Any]:
+def scorecard_entry(symbol: str, result: AnalysisResult, config: AnalysisConfig,
+                    h1: Sequence[Candle] = (), now: datetime | None = None) -> dict[str, Any]:
     """One pair's readings at the last closed H1 bar (plain numbers; the analysis is unchanged)."""
     snap, candidate = result.snapshot, result.candidate
     f = snap.feature_snapshot
@@ -46,7 +51,7 @@ def scorecard_entry(symbol: str, result: AnalysisResult, config: AnalysisConfig)
         verdict = "BUY" if candidate.side.value == "LONG" else "SELL"
         stop = candidate.structural_reference_levels["rolling_low" if verdict == "BUY" else "rolling_high"]
     close = float(f.get("h1_close") or 0)
-    return {
+    entry: dict[str, Any] = {
         "symbol": symbol.upper(), "h1_bar_utc": snap.last_closed_h1_utc.isoformat(),
         "sessions": list(snap.session_context),
         "h4": {"regime": snap.regime.label.value, "direction": _num(snap.regime.directional_bias),
@@ -63,6 +68,9 @@ def scorecard_entry(symbol: str, result: AnalysisResult, config: AnalysisConfig)
                          "stop": _num(stop, 5), "stop_pips": _num(abs(close - stop) / pip, 1) if stop else None,
                          "stop_atr": _num(abs(close - stop) / atr) if stop and atr else None},
     }
+    if h1 and now is not None:
+        entry["day_levels"] = levels_now(h1, now, atr)
+    return entry
 
 
 def _fmt(value: Any, spec: str = ".2f") -> str:
@@ -84,4 +92,6 @@ def scorecard_text(payload: Mapping[str, Any]) -> str:
                   f"the 20 EMA, RSI {_fmt(h1['rsi'], '.0f')}, MACD {_fmt(h1['macd_hist_atr'], '+.2f')} ATR, ATR "
                   f"{_fmt(h1['atr_pips'], '.1f')} pips"),
                   f"Setup score {_fmt(setup['score'])} (old threshold {setup['threshold']}); old strategy {verdict}"]
+        if entry.get("day_levels"):
+            lines.append(levels_text(entry["day_levels"]))
     return "\n".join(lines)

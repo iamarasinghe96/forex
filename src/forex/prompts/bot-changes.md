@@ -30,6 +30,11 @@ Judge each trade by the rules in force when it was opened. All times are UTC.
   - The hourly analysis still runs; its readings are published as scoring tools.
   - Trades opened earlier keep their stops and exits until they close.
   - No new trades open until a new strategy is switched on.
+- **From the update installed after 17 Oct: previous-day high/low tool (scoring only).**
+  - Each hourly scorecard also shows the previous forex day's high and low (17:00–17:00 New York),
+    the type of day it was, the distance to each in ATRs, and what today has done around them.
+  - `/levels` measures how price behaved around these levels over the stored history.
+  - It does not trade.
 
 **Sizing note.** Trades are sized in steps of 0.01 lots, always rounded down so the risk never
 exceeds the budget. On a A$1,000 account with wide stops this can cut the planned 5% a lot. For

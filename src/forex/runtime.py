@@ -361,7 +361,7 @@ class PaperRuntime:
             broker_symbol = self.feed.resolve_symbol(symbol).broker_name
             self.trailing_atr[broker_symbol] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
             self.atr_updated[broker_symbol] = now
-            scorecard.append(scorecard_entry(symbol, result, self.config.analysis))
+            scorecard.append(scorecard_entry(symbol, result, self.config.analysis, h1, now))
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue

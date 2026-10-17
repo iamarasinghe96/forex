@@ -1086,3 +1086,54 @@ design template and the path from design to live.
 
 **Tests:** 292 passed. Trading-path tests now set `entry_strategy: trend-v1` explicitly; 4 new
 scoring-only tests. Dashboard: 13 node tests; the build succeeds.
+
+### Previous day's high and low: scoring tool and study (2026-10-17)
+
+The operator shared a trading video (Nasdaq futures, about 200 days) on previous-day highs and lows.
+Its claims:
+- 11% of days run neither level, 77% one, 12% both;
+- 80% of single-break days that open inside the previous range run the level in the morning;
+- price comes back to the level 56% of the time after opening outside;
+- price reverses after running it.
+
+**Bot (scoring only, never trades):**
+- `src/forex/day_levels.py`:
+  - the forex day is 17:00–17:00 New York;
+  - the London and New York opens are at 08:00 local time, with a 4-hour window after each;
+  - a level is "run" when an hour trades beyond it.
+- **Scorecard:** each hourly scorecard gains `day_levels` per pair:
+  - the previous day's high and low and its day type;
+  - the distance to each level in H1 ATRs;
+  - today's runs so far and where London and New York opened.
+  - Shown in `/scorecard` and on the dashboard cards.
+- **`/levels` (Telegram):** runs the study on the stored H1 candles. It sends a pooled summary and a
+  file with each pair. The study measures:
+  - the day types, Mondays, and the day after a double break;
+  - the range on the day after an inside day;
+  - for each open: inside/outside, the video's conditional 80% next to the unconditional,
+    tradeable figure, which level is run first, the come-back after opening outside, and a magnet
+    test;
+  - after the hour that first ran a level closes: 1 ATR back or 1 ATR further first.
+- **The mirrored-level comparison:** every result sits beside the same measurement on a level the
+  same distance away on the other side of the open, and each figure carries a ±2 standard error
+  range.
+  - A first draft compared "nearer level first" with the random-walk formula ((x−L)/(H−L)).
+  - The random-walk check showed the formula understates chance when the day is time-limited
+    (81% against 76% on pure noise), so the mirrored-level comparison replaced it.
+- `scripts/day_levels_study.py` runs the same study read-only on a research database for long
+  history.
+
+**Random-walk check** (seeded, no edge by construction; kept as a test):
+- day types came out at 11% / 79% / 10%, close to the video's split;
+- the magnet test gave 20% against 21%;
+- "nearer first" gave 81% against 82% mirrored;
+- after a run, price moved 1 ATR back first 49% and 51% of the time.
+
+The checks find nothing in noise, and the video's headline split is what chance gives.
+
+**Docs:** `docs/STRATEGY_WORKBENCH.md` gains the tool's row and a section on the video's claims;
+`bot-changes.md` has the change.
+
+**Tests:** 298 passed (6 new in `tests/test_day_levels.py`, plus a scorecard assertion). Dashboard:
+14 node tests; the build succeeds.
+

@@ -114,6 +114,21 @@ export function lossReviews(events,firstEventAt=null){
     .filter(x=>Number.isFinite(x.closedAt)&&(!Number.isFinite(start)||x.closedAt>=start))
     .sort((a,b)=>b.closedAt-a.closedAt);
 }
+// Previous day's high and low (forex day 17:00-17:00 New York) and what today has done around them.
+function dayLevelRows(lv,f){
+  if(!lv||typeof lv!=='object')return [];
+  const kind={inside:'inside day',single:'single break',double:'double break'}[lv.type];
+  const away=(d,pos,neg)=>numeric(d)===null?'':` (${Math.abs(Number(d)).toFixed(1)} ATR ${Number(d)>=0?pos:neg} price)`;
+  const rows=[[`Previous day${kind?` (${kind})`:''}`,`high ${lv.high??'–'}${away(lv.to_high_atr,'above','below')} · low ${lv.low??'–'}${away(lv.to_low_atr,'below','above')}`]];
+  const t=lv.today;
+  if(t&&typeof t==='object'){
+    const ran=[t.ran_high&&'the high',t.ran_low&&'the low'].filter(Boolean).join(' and ')||'neither';
+    const where={inside:'inside the range',above:'above the high',below:'below the low'};
+    const opens=Object.entries(t.opens??{}).map(([k,v])=>`${k} opened ${where[v]??v}`).join('; ');
+    rows.push(['Today so far',`ran ${ran}${opens?`; ${opens}`:''}`]);
+  }
+  return rows;
+}
 // The hourly scorecard (old trend strategy kept as scoring tools): one plain-language card per pair.
 export function scorecardCards(card){
   const f=(v,d=2,sign=false)=>numeric(v)===null?'–':(sign&&Number(v)>0?'+':'')+Number(v).toFixed(d);
@@ -126,7 +141,8 @@ export function scorecardCards(card){
         ['Distance from the 20 EMA',`${f(h1.ema20_distance_atr,2,true)} ATR`],
         ['RSI · MACD',`${f(h1.rsi,0)} · ${f(h1.macd_hist_atr,2,true)} ATR`],
         ['Hourly ATR',`${f(h1.atr_pips,1)} pips`],
-        ['Old setup score',`${f(setup.score)} (old threshold ${setup.threshold??'–'})`]],
+        ['Old setup score',`${f(setup.score)} (old threshold ${setup.threshold??'–'})`],
+        ...dayLevelRows(p.day_levels,f)],
       verdict:old.verdict&&old.verdict!=='none'?`Old strategy would ${old.verdict}, stop ${old.stop} (${f(old.stop_pips,0)} pips)`:`Old strategy: no signal${old.reason?` (${old.reason})`:''}`};
   });
 }

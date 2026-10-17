@@ -16,6 +16,8 @@ The old strategy now runs only as a set of **scoring tools**, measured every hou
   - Telegram: `/scorecard`;
   - dashboard: the "Scoring tools" section;
   - journal: `scorecard` events, for later analysis.
+- **`/levels` in Telegram** runs the previous-day high/low study (below) on the hourly prices the
+  bot has stored, about the last year, and sends the full report as a file.
 - **When the old rules would have traded,** the hour is recorded as "Scoring only: no entry
   strategy is active (the old trend rules would buy/sell)". These records show what the old strategy
   would have done, so a new strategy can be compared against it.
@@ -37,6 +39,7 @@ The old strategy now runs only as a set of **scoring tools**, measured every hou
 | **Hourly ATR** | Typical hourly movement in pips | The basis for stops and the trailing exit. |
 | **Old setup score** and its 4 parts | The old entry gate: the average of trend, momentum, structure and pullback | **No skill.** Random entries in the same trend did better (+0.087 R against +0.055 R). Higher scores did worse. |
 | **Old strategy would BUY/SELL, and its stop** | The old rules' full decision; the stop is the 20-hour low or high | See above. Its stops were often 4–9 × ATR wide. |
+| **Previous day's high and low** (`day_levels`) | The previous forex day's high and low (17:00–17:00 New York) and the type of day it was (inside, single or double break). Also the distance from price to each level in ATRs, and what today has done so far: which level it has run, and whether London and New York opened inside the range. | Being measured: `/levels`. On computer-made random prices the study finds the video's day-type split too (see below). |
 
 **Ideas already rejected, so start from a different base:**
 - range mean reversion: buying lows and selling highs inside a range, against no trend;
@@ -48,6 +51,33 @@ The old strategy now runs only as a set of **scoring tools**, measured every hou
 **Ideas already queued:** see `docs/LOSS_LESSONS.md`. They include pullback entries, no chasing,
 session filters, stop buffers, exit variants and event filters. Validated swing lows (break of
 structure) are another idea worth adding as a tool.
+
+## The previous day's high and low (idea from a trading video, 17 Oct)
+
+The video (Nasdaq futures, about 200 days) says price is drawn to the previous day's high and low,
+where stop orders sit. Its figures:
+- 11% of days run neither level, 77% one, 12% both;
+- opening inside the previous range, the level is run in the morning session 80% of the time;
+- opening outside, price comes back to the level about 56% of the time;
+- price often reverses after running the level.
+
+`src/forex/day_levels.py` measures the same things on our pairs, with forex definitions:
+- a day runs from 17:00 to 17:00 New York time;
+- the London and New York opens are at 08:00 local time, and "the morning" is the next 4 hours.
+
+Each result sits beside the same measurement on an ordinary level the same distance away on the other
+side ("mirrored"). Price reaches nearby levels often by chance, so only a difference from the
+mirrored level counts as an edge.
+
+**Checked on computer-made random prices**, which have no edge by construction:
+- the day types came out at 11% / 79% / 10%, nearly the video's split;
+- the previous high or low was run as often as its mirrored level;
+- after a level was run, price moved 1 ATR back first about 50% of the time.
+
+So the video's headline numbers are what chance alone produces. Its "80%" also counts only days that
+turned out one-sided, which is known only when the day ends. Whether real forex prices beat chance is
+what `/levels` shows. On the PC, `python scripts/day_levels_study.py --database
+data/dukascopy-research.sqlite3` runs the same study on the 2019–2026 research data.
 
 ## Designing a strategy: fill in each line
 
