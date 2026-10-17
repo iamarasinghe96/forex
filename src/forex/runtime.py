@@ -46,6 +46,7 @@ from forex.persistence import CandleStore, RiskSessionStore
 from forex.risk import DecisionStatus, PortfolioRiskState, evaluate_daily_risk
 from forex.risk import decide_risk as evaluate_candidate
 from forex.risk_policy import policy_from_config
+from forex.scorecard import scorecard_entry
 from forex.scoring import ScoreModel, SetupFeatures, strategy_signature
 from forex.serialization import canonical_json, json_value
 
@@ -339,6 +340,7 @@ class PaperRuntime:
         if now < self.next_analysis:
             self.heartbeat(now, "RUNNING")
             return
+        scorecard: list[dict[str, Any]] = []
         for symbol in self.config.broker.symbols:
             if symbol in stale:
                 logging.getLogger("forex.paper").info("%s quote is quiet; skipping this hour's evaluation for it", symbol)
@@ -359,6 +361,7 @@ class PaperRuntime:
             broker_symbol = self.feed.resolve_symbol(symbol).broker_name
             self.trailing_atr[broker_symbol] = Decimal(str(result.snapshot.feature_snapshot["h1_atr"]))
             self.atr_updated[broker_symbol] = now
+            scorecard.append(scorecard_entry(symbol, result, self.config.analysis))
             identity = result.snapshot.evaluation_id
             if not self.store.claim(identity, now):
                 continue
@@ -370,6 +373,14 @@ class PaperRuntime:
             candidate = result.candidate
             if candidate is None:
                 self.emit("no_trade", identity, {**payload, "reason": result.snapshot.no_candidate_reason}, now)
+                self.store.complete(identity, now)
+                continue
+            if self.config.paper.entry_strategy == "none":
+                # Scoring only: the old rules' signal is recorded as a measurement, never traded.
+                side = "buy" if candidate.side is Side.LONG else "sell"
+                self.emit("no_trade", identity, {**payload, "candidate": json_value(candidate),
+                          "reason": f"Scoring only: no entry strategy is active (the old trend rules would {side})"},
+                          now)
                 self.store.complete(identity, now)
                 continue
             setup_score = None
@@ -451,6 +462,11 @@ class PaperRuntime:
                           "entry_spread_r": float(spread / abs(entry - stop)) if entry != stop else None}, execution_now)
             self.store.complete(identity, self.clock())
         self.paper.journal_fills(self.journal)
+        if scorecard:
+            # Named by the exact time: a restart within the hour writes a second card, never a conflict.
+            self.emit("scorecard", "scorecard:" + now.isoformat(),
+                      {"generated_at_utc": now, "entry_strategy": self.config.paper.entry_strategy,
+                       "pairs": scorecard}, self.clock())
         self.periodic_evidence(self.clock())
         self.heartbeat(self.clock(), "RUNNING")
         self.next_analysis = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
@@ -468,7 +484,8 @@ class PaperRuntime:
         with closing(sqlite3.connect(self.paper.path)) as db, db:
             row = db.execute("SELECT MAX(opened_at) FROM paper_positions").fetchone()
         last = datetime.fromisoformat(row[0]) if row[0] else self.started
-        if (now - last).total_seconds() >= self.config.paper.no_trade_hours * 3600:
+        if (self.config.paper.entry_strategy != "none"  # Scoring only: no fills are expected.
+                and (now - last).total_seconds() >= self.config.paper.no_trade_hours * 3600):
             identity = "silence:" + now.date().isoformat()
             if self.store.claim(identity, now):
                 self.emit("alert", identity, {"reason": "No paper fills beyond configured window",

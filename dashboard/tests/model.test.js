@@ -66,3 +66,15 @@ test('loss reviews are newest first, from this account only, and need a prompt',
   assert.equal(lossReviews([prompt('old','2026-09-20T00:00:00+00:00')]).length,1);
   assert.deepEqual(lossReviews(undefined),[]);
 });
+import {scorecardCards} from '../src/model.js';
+test('scorecard cards read the hourly measurements and the old strategy verdict',()=>{
+  const card={pairs:[{symbol:'EURUSD',h4:{regime:'TREND_DOWN',strength:0.71,direction:-0.62,volatility_rank:0.4},
+    h1:{range_position:0.08,ema20_distance_atr:-1.3,rsi:31,macd_hist_atr:-0.2,atr_pips:11.2},setup:{score:0.52,threshold:0.45},
+    old_strategy:{verdict:'SELL',stop:1.12653,stop_pips:45}},{symbol:'USDJPY',h4:{regime:'RANGE'},h1:{},setup:{},old_strategy:{verdict:'none',reason:'H4 regime RANGE has no coherent setup family'}}]};
+  const [eur,jpy]=scorecardCards(card);
+  assert.equal(eur.rows[0][1],'TREND_DOWN · strength 0.71 · direction -0.62');
+  assert.equal(eur.verdict,'Old strategy would SELL, stop 1.12653 (45 pips)');
+  assert.equal(jpy.verdict,'Old strategy: no signal (H4 regime RANGE has no coherent setup family)');
+  assert.equal(jpy.rows[2][1],'– (0 = low, 1 = high)');
+  assert.deepEqual(scorecardCards(null),[]);
+});

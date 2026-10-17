@@ -125,6 +125,7 @@ def test_lookback_reports_results_breakdowns_and_each_trade(journal: JournalStor
     assert "London open: 07:00 UTC" in text                    # Early October: British summer time.
     assert "23011822" not in text                              # No account number.
     assert "Changes to the live bot since this paper account started" in text
+    assert "No entry strategy is active (scoring only" in text and "no entry strategy (scoring only)" in text
     assert "It is given no news, headlines or economic calendar" in text
     assert "the rules asked for 5.0% of the balance" in text and "the plan was 2.6% (0.02 lots)" in text
     assert "**AI check (numbers only, no news):** APPROVED" in text

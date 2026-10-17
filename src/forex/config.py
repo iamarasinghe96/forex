@@ -252,6 +252,9 @@ class PaperConfig(BaseModel):
     # starts once a trade reaches +1R (None = off). Paper only.
     target_reward_risk: float | None = Field(default=None, ge=1.5, allow_inf_nan=False)
     atr_trailing_multiple: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    # Which rules open new trades. "trend-v1" is the original trend strategy. "none" = scoring only:
+    # the hourly analysis and scorecard continue, open trades are still managed, nothing new opens.
+    entry_strategy: Literal["trend-v1", "none"] = "trend-v1"
 
 
 class LearningConfig(BaseModel):

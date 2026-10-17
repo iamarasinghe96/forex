@@ -49,6 +49,7 @@ def runtime_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[An
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.analysis = compact_config()
     config.broker.symbols = ["EURUSD"]
     config.context.enabled = False

@@ -1,5 +1,9 @@
 # Lessons from losses (ledger)
 
+**17 Oct 2026:** the old strategy no longer opens trades (`paper.entry_strategy: none`). The
+operator is designing a new one; see [STRATEGY_WORKBENCH.md](STRATEGY_WORKBENCH.md). This ledger
+and its candidate tests remain the input for that design.
+
 One entry per losing trade, with the outside review and what was checked. Patterns that recur
 across entries become pre-registered tests; see [LOSS_REVIEWS.md](LOSS_REVIEWS.md) for the process.
 

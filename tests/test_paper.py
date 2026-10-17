@@ -137,6 +137,7 @@ def test_runtime_real_analysis_no_trade_and_restart(tmp_path: Path) -> None:
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.analysis = compact_config()
     config.broker.symbols = ["EURUSD"]
     config.execution.session_rollover = None
@@ -169,6 +170,7 @@ def test_runtime_halt_flattens_simulation_without_real_orders(tmp_path: Path) ->
     paper, feed = setup(tmp_path)
     paper.submit(intent())
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.execution.session_rollover = None
     config.execution.session_rollover_hour_utc = 0
     config.paper.heartbeat_file = tmp_path / "heartbeat.json"
@@ -213,6 +215,7 @@ def test_candidate_passes_shared_risk_context_execution_and_fill_provenance(
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.analysis = compact_config()
     config.broker.symbols = ["EURUSD"]
     config.context.enabled = False  # Independent of the operator's config.yaml choice.
@@ -249,6 +252,7 @@ def test_health_journal_is_throttled_but_heartbeat_file_is_fresh(tmp_path: Path,
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.context.enabled = False
     config.execution.session_rollover = None
     config.execution.session_rollover_hour_utc = 0
@@ -283,6 +287,7 @@ def test_persistent_cycle_failure_is_reported_once_then_hourly_then_recovered(
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.context.enabled = config.cloud.enabled = config.telegram.enabled = False
     config.execution.session_rollover = None
     config.execution.session_rollover_hour_utc = 0
@@ -328,6 +333,7 @@ def test_brief_flapping_failures_do_not_alert_the_phone(tmp_path: Path, monkeypa
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.context.enabled = config.cloud.enabled = config.telegram.enabled = False
     config.execution.session_rollover = None
     config.execution.session_rollover_hour_utc = 0
@@ -385,6 +391,7 @@ def test_runtime_rides_out_quiet_quotes_and_reports_long_silence(tmp_path: Path)
 
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.broker.symbols = ["EURUSD"]
     config.context.enabled = False
     config.execution.session_rollover = None
@@ -419,6 +426,7 @@ def test_weekend_close_sends_one_notice_instead_of_hourly_errors(tmp_path: Path)
     assert weekend_close_start(datetime(2026, 10, 4, 21, 1, tzinfo=UTC)) is None  # Reopened Sunday.
     paper, feed = setup(tmp_path)
     config = load_config(Path("config.yaml"))
+    config.paper.entry_strategy = "trend-v1"  # The live setting is scoring-only; these tests exercise trading.
     config.broker.symbols = ["EURUSD"]
     config.context.enabled = False
     config.execution.session_rollover = None

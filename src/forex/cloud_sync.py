@@ -166,8 +166,8 @@ class FirestoreMirror:
         batch.set(root.collection("aggregates").document("all"), dict(summary))
         batch.set(root.collection("aggregates").document(event.observed_at_utc.date().isoformat()),
                   dict(daily))
-        if event.kind == "position_chart":  # The dashboard reads the latest chart from one document.
-            batch.set(root.collection("aggregates").document("chart"),
+        if event.kind in {"position_chart", "scorecard"}:  # The dashboard reads the latest of each from one document.
+            batch.set(root.collection("aggregates").document("chart" if event.kind == "position_chart" else "scorecard"),
                       firestore_safe(json_value({**event.payload, "sequence": event.sequence})))
         batch.commit()
 

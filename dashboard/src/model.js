@@ -114,3 +114,19 @@ export function lossReviews(events,firstEventAt=null){
     .filter(x=>Number.isFinite(x.closedAt)&&(!Number.isFinite(start)||x.closedAt>=start))
     .sort((a,b)=>b.closedAt-a.closedAt);
 }
+// The hourly scorecard (old trend strategy kept as scoring tools): one plain-language card per pair.
+export function scorecardCards(card){
+  const f=(v,d=2,sign=false)=>numeric(v)===null?'–':(sign&&Number(v)>0?'+':'')+Number(v).toFixed(d);
+  return (Array.isArray(card?.pairs)?card.pairs:[]).map(p=>{
+    const h4=p.h4??{},h1=p.h1??{},setup=p.setup??{},old=p.old_strategy??{};
+    return {symbol:String(p.symbol??''),
+      rows:[['4-hour trend',`${h4.regime??'–'} · strength ${f(h4.strength)} · direction ${f(h4.direction,2,true)}`],
+        ['Volatility rank (4-hour)',f(h4.volatility_rank)],
+        ['Place in the 20-hour range',`${f(h1.range_position)} (0 = low, 1 = high)`],
+        ['Distance from the 20 EMA',`${f(h1.ema20_distance_atr,2,true)} ATR`],
+        ['RSI · MACD',`${f(h1.rsi,0)} · ${f(h1.macd_hist_atr,2,true)} ATR`],
+        ['Hourly ATR',`${f(h1.atr_pips,1)} pips`],
+        ['Old setup score',`${f(setup.score)} (old threshold ${setup.threshold??'–'})`]],
+      verdict:old.verdict&&old.verdict!=='none'?`Old strategy would ${old.verdict}, stop ${old.stop} (${f(old.stop_pips,0)} pips)`:`Old strategy: no signal${old.reason?` (${old.reason})`:''}`};
+  });
+}

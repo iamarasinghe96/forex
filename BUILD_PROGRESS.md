@@ -1053,3 +1053,36 @@ It now reads, for example: "Daily recap for Mon 12 Oct (UTC day). Already report
 closed, not new: 1 trade(s) closed (0 won, 1 lost): GBPUSD Sell STOP -1.00 R (A$-53.17, closed
 06:28 UTC). Day total A$-53.17." Days without trades say "no trades closed". There is no change
 to trading. Tests: 288 passed.
+
+### Old strategy switched off; kept as scoring tools (operator decision, 2026-10-17)
+
+The balance fell to about A$955, and the operator will design a new strategy. Nothing is deleted.
+
+**Bot:**
+- `paper.entry_strategy: none` (new setting; `trend-v1` = the old trend strategy).
+- The hourly analysis runs as before. A signal from the old rules is journaled as `no_trade`
+  ("Scoring only: no entry strategy is active (the old trend rules would buy/sell)") with the
+  candidate attached. It never reaches risk, the AI check or execution.
+- Open trades are still managed (stops, break-even, trailing).
+- The weekly "no fills" alert is off in this mode.
+- Each hourly analysis publishes a `scorecard` journal event (`src/forex/scorecard.py`). Per pair
+  it holds:
+  - the 4-hour regime, direction, strength, efficiency and volatility;
+  - the 1-hour range position, EMA distance, RSI, MACD and ATR;
+  - the setup-score parts;
+  - the old strategy's would-be verdict and stop.
+- The scorecard is mirrored to `aggregates/scorecard` and sent by `/scorecard` in Telegram.
+- Scorecards are named by exact time. An earlier draft named them by the hour, and an existing
+  restart test caught that a restart within the hour would then fail every cycle.
+
+**Review prompts:** they say that no entry strategy is active. The change history records the
+switch.
+
+**Dashboard:** a new "Scoring tools" section shows one card per pair. Checked at phone width with
+a fake offline Firebase: no page errors and no sideways scrolling.
+
+**Docs:** `docs/STRATEGY_WORKBENCH.md` covers the tool catalogue with research verdicts, the
+design template and the path from design to live.
+
+**Tests:** 292 passed. Trading-path tests now set `entry_strategy: trend-v1` explicitly; 4 new
+scoring-only tests. Dashboard: 13 node tests; the build succeeds.

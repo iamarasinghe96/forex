@@ -25,6 +25,11 @@ Judge each trade by the rules in force when it was opened. All times are UTC.
   the balance; trades already at break-even count as 0. In practice that means at most two full 5%
   trades betting the same way on the dollar. Blocked setups appear as "US-dollar direction risk cap
   reached".
+- **From the update installed after 17 Oct: no entry strategy (scoring only).** The account had
+  fallen to about A$955, and the operator switched the old trend strategy off to design a new one.
+  - The hourly analysis still runs; its readings are published as scoring tools.
+  - Trades opened earlier keep their stops and exits until they close.
+  - No new trades open until a new strategy is switched on.
 
 **Sizing note.** Trades are sized in steps of 0.01 lots, always rounded down so the risk never
 exceeds the budget. On a A$1,000 account with wide stops this can cut the planned 5% a lot. For

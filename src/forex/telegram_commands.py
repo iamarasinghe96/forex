@@ -35,6 +35,7 @@ from forex.learning import (
 )
 from forex.lookback import DEFAULT_DAYS, MAX_DAYS, build_lookback_prompt
 from forex.persistence import CandleStore
+from forex.scorecard import scorecard_text
 
 LOGGER = logging.getLogger("forex.telegram")
 HELP = (
@@ -42,6 +43,7 @@ HELP = (
     "/scores - what the bot has learned so far\n"
     "/settings - settings a review may change\n"
     "/review - get the learning prompt to paste into Claude\n"
+    "/scorecard - the latest hourly readings of the scoring tools for each pair\n"
     "/loss - the latest losing trade's review prompt for ChatGPT\n"
     "/lookback - every trade of the last 14 days reviewed, as a ChatGPT prompt (/lookback 30 for 30 days)\n"
     "Paste Claude's JSON reply here - the bot checks it and shows the changes\n"
@@ -95,6 +97,11 @@ class CommandHandler:
                           "UTC). Copy all the text, or share the file to ChatGPT, and send it. Then paste ChatGPT's "
                           "answer to Claude Code.", (str(loss.get("file_name", "loss-review.txt")),
                                                      str(loss.get("prompt", ""))))]
+        if command == "/scorecard":
+            latest = self.journal.of_kind("PAPER", "scorecard", limit=1) if self.journal else ()
+            if not latest:
+                return [Reply("No scorecard yet. The bot writes one after each hourly analysis.")]
+            return [Reply(scorecard_text(latest[-1].payload))]
         if command == "/lookback":
             if self.journal is None:
                 return [Reply("The lookback needs the bot's trade records, which are not available here.")]

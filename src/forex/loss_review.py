@@ -105,7 +105,11 @@ def strategy_lines(config: AppConfig, facts: TradeFacts | None = None) -> list[s
                  "by confidence: " + ", ".join(f"{k} {float(v):g}%" for k, v in r.conviction_risk_percent.items()))
     efficiency = a.trend_efficiency_window or a.structure_window
     providers = ", ".join(provider.name for provider in ctx.providers) or "none configured"
-    lines = [
+    lines = ([
+        ("**No entry strategy is active (scoring only, operator decision on 17 Oct 2026).** The rules below are "
+        "the old trend strategy. They no longer open trades, but still manage trades opened before the switch, "
+        "and their readings are published every hour as scoring tools while a new strategy is designed."), "",
+    ] if p.entry_strategy == "none" else []) + [
         f"Settings version {version}"
         + ("" if facts is None or version == facts.strategy_version else
            f" (this trade was taken under version {facts.strategy_version}; the rules below are the current ones)")
