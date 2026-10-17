@@ -18,6 +18,8 @@ The old strategy now runs only as a set of **scoring tools**, measured every hou
   - journal: `scorecard` events, for later analysis.
 - **`/levels` in Telegram** runs the previous-day high/low study (below) on the hourly prices the
   bot has stored, about the last year, and sends the full report as a file.
+- **The strategy lab** (`tools\strategy-lab.bat`, on the PC) tests strategies on 2012–2026 under the
+  paper rules and keeps every run (see "Testing on history" below).
 - **When the old rules would have traded,** the hour is recorded as "Scoring only: no entry
   strategy is active (the old trend rules would buy/sell)". These records show what the old strategy
   would have done, so a new strategy can be compared against it.
@@ -76,8 +78,67 @@ mirrored level counts as an edge.
 
 So the video's headline numbers are what chance alone produces. Its "80%" also counts only days that
 turned out one-sided, which is known only when the day ends. Whether real forex prices beat chance is
-what `/levels` shows. On the PC, `python scripts/day_levels_study.py --database
-data/dukascopy-research.sqlite3` runs the same study on the 2019–2026 research data.
+what `/levels` shows on the bot's stored year. On the PC, the strategy lab's study
+(`tools\previous-day-study.bat`) runs it on 2012–2026.
+
+## Testing on history: the strategy lab
+
+The strategy lab runs on the PC, where the 2012–2026 Dukascopy hourly databases are stored. It tests
+entry ideas under the paper bot's own rules and saves every run. It is research only: it never
+contacts the broker and changes nothing in the live bot.
+
+**Double-click files** (in `C:\Users\Indika\Desktop\forex\tools\`):
+
+| File | What it does |
+|---|---|
+| `strategy-lab.bat` | A menu: test all strategies or one, run the previous-day study, list the strategies, open the results folder or the settings. |
+| `test-all-strategies.bat` | Tests every strategy that is switched on, compares them, saves the results and opens the summary. |
+| `previous-day-study.bat` | The video's previous-day high/low numbers on our pairs, 2012–2026, with the mirrored-level checks. |
+
+**Settings:** `strategy-lab.yaml` in the repository folder. It holds:
+- the databases, pairs and dates;
+- the assumed costs (0.9 / 1.2 / 1.0 pips round trip);
+- the rules: 5% risk, one trade per pair, the 10% US-dollar cap, break-even at +1R, a 3 × ATR trail
+  and a 10R target, as on paper;
+- each strategy's on/off switch, its settings, and any exit overrides.
+
+Change a number, run again, and compare the runs in the ledger.
+
+**Results:** each run goes in its own folder under `reports\strategy-lab\`:
+- `summary.txt`: a comparison table, then each strategy in detail;
+- `<strategy>-trades.csv`: every trade, for Excel;
+- `settings-used.yaml`: the settings as they were for that run.
+
+`ledger.csv` lists every run, one line per strategy, and `latest.txt` is the newest summary.
+
+**How a trade is simulated** (the same conventions as the earlier research):
+- **Entry:** at the close of the hour that gives the signal.
+- **Costs:** subtracted from every trade.
+- **Exits:** the stop, the target, break-even and the trail, with the live bot's stop rule.
+- **Stop moves** apply from the next hour.
+- **When the stop and target are both touched in one hour,** the stop is assumed.
+- **An hour that opens beyond the stop** fills at that open.
+- **Trades cannot cross a data hole.**
+
+**The pass bar** is the one pre-registered above. Each line is checked and printed as PASS or FAIL:
+- a profit before 2019 and from 2019;
+- a profit at double costs;
+- a profit without USDJPY;
+- at least 100 trades;
+- better than 95% of 200 random-direction runs.
+
+The random runs use the same moments, stops and exits, with one coin flip per run of signals. On
+computer-made random prices this check passed 1 time in 36, close to the 5% chance level.
+
+**Strategies included:**
+- **`trend-v1`, the old strategy, as the reference to beat.** It replays the live analysis hour by
+  hour, which takes 10–30 minutes the first time; the result is cached in `data\lab-cache\`.
+- **`pd-sweep`:** previous-day sweep reversal (video 10:37).
+- **`pd-breakout`:** previous-day breakout (video 9:19).
+- **`pd-magnet`:** trade towards the nearer previous-day level from the London or New York open
+  (video 4:00–5:23).
+
+`list` in the menu describes each one with its current settings.
 
 ## Designing a strategy: fill in each line
 
@@ -97,10 +158,11 @@ Claude Code will add it as a new tool.
 
 1. **Rules in.** Send the filled-in template to Claude Code. It becomes a new named strategy (e.g.
    `operator-v1`) beside `trend-v1`; nothing old is removed.
-2. **Pre-register.** The pass bar is written down before any results are seen: both 2012–2018 and
-   2019–2026, at double costs, without depending on USDJPY alone, and against random entries.
-   - Running these tests from Claude Code needs the Dukascopy price server
-     (`datafeed.dukascopy.com`). This cloud environment currently blocks it, so allow it in the
-     environment's network settings or run the tests on the PC.
+2. **Pre-register, then test.** The pass bar is written down before any results are seen: both
+   2012–2018 and 2019–2026, at double costs, without depending on USDJPY alone, and against random
+   entries.
+   - The new strategy is added to the strategy lab. Running `tools\test-all-strategies.bat` on the
+     PC prints PASS or FAIL against this bar.
+   - Claude Code can't run it in the cloud, because `datafeed.dukascopy.com` is blocked there.
 3. **Paper.** If it passes, `paper.entry_strategy` is set to the new name. It then runs on paper
    with the same scorecards, loss reviews and lookbacks.

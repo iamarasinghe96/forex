@@ -1137,3 +1137,50 @@ The checks find nothing in noise, and the video's headline split is what chance 
 **Tests:** 298 passed (6 new in `tests/test_day_levels.py`, plus a scorecard assertion). Dashboard:
 14 node tests; the build succeeds.
 
+### Strategy lab: test strategies on 2012–2026 history with double-click files (2026-10-17)
+
+The operator wanted to test on historical data straight away, with a reusable tool. The cloud
+session cannot reach Dukascopy (403), so the lab runs on the PC, which has the research databases.
+
+**Package `src/forex/lab/`** (research only; no broker access; the live bot is untouched):
+- `data.py`: reads every configured candle database read-only, with later files winning on
+  overlapping hours. It splits at holes of 48+ missing weekday hours and restarts the ATR after
+  each hole. If no research database exists, it falls back to the paper database.
+- `strategies.py`: signals decided at an hour's close.
+  - `trend-v1` replays the live `analyse_market` with config.yaml's analysis settings. H4 is
+    aggregated from H1 at 00 UTC, as on paper. It runs in parallel per pair and is cached in
+    `data/lab-cache/`. It takes about 3 ms per hour, roughly 14 minutes in one process for 14 years
+    across 3 pairs.
+  - `pd-sweep`, `pd-breakout` and `pd-magnet` come from the video.
+- `engine.py`: the trade simulation, the portfolio rules, the statistics, the report and the
+  storage.
+  - **Simulation:** follows `scripts/causal_replay.py`'s conventions. The live break-even and trail
+    rule is checked against `forex.risk.protective_stop` in the tests.
+  - **Portfolio:** one trade per pair, and the US-dollar cap (trades at break-even count as 0),
+    applied in time order.
+  - **Pass bar:** checked automatically.
+  - **Random comparison:** directions randomised with one coin per run of signals (same pair and
+    side, within 24 h).
+- `settings.py` and `strategy-lab.yaml`: data, costs, rules, and per-strategy settings with exit
+  overrides. Unknown settings are refused.
+- `__main__.py`: a menu, plus `run`, `study` and `list`.
+
+**Tools:** `tools/strategy-lab.bat`, `tools/test-all-strategies.bat` and
+`tools/previous-day-study.bat`. They use CRLF line endings (`.gitattributes`), PYTHONPATH=src and
+UTF-8 output, prefer `.venv` and otherwise fall back to `py -3`.
+
+**Storage:** each run is saved in `reports/strategy-lab/<time>_<label>/` (summary, trade CSVs, the
+settings used), with `ledger.csv` and `latest.txt` beside it. Git ignores the folder.
+
+**Checks on computer-made random prices:**
+- **First version:** one coin per signal made the random comparison too narrow. The old strategy
+  ranked at 1–2% on one noise set. Other noise sets gave 21% and 24%, so that was chance.
+- **The fix:** one coin per run of signals keeps the strategy's clustering.
+- **Calibration:** over 12 noise datasets × 3 previous-day strategies, the ranks spread evenly and 1
+  of 36 passed the 95% bar (chance would give about 2).
+- **End to end:** 2.5 years × 3 pairs took about 1 minute, including the trend-v1 replay; 6 seconds
+  once cached. Every strategy failed, as it should on noise, mostly by about the cost.
+
+**Tests:** 306 passed (8 new in `tests/test_lab.py`). Ruff is clean; mypy shows only the 2
+Windows-only errors.
+

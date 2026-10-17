@@ -1,0 +1,66 @@
+# Strategy lab settings (research only: nothing here touches the live bot or places orders).
+# Run it with tools\strategy-lab.bat (menu) or tools\test-all-strategies.bat.
+# Every run is saved in reports\strategy-lab\ (summary.txt, each strategy's trades, these settings)
+# and listed in reports\strategy-lab\ledger.csv, so runs with different settings can be compared.
+
+data:
+  # Every database here that exists is used; on overlapping hours the later file wins.
+  databases:
+    - data/dukascopy-2012-2018.sqlite3
+    - data/dukascopy-research.sqlite3
+    - data/rebuilt/dukascopy-2012-2018.sqlite3
+    - data/rebuilt/dukascopy-research.sqlite3
+  # Used only if none of the above exist (e.g. on the VPS): the bot's own stored prices, about a year.
+  fallback_databases:
+    - data/paper-a1000.sqlite3
+  pairs: [EURUSD, GBPUSD, USDJPY]
+  start: 2012-04-01    # Trades from this date (earlier prices only warm up the indicators).
+  end: null            # null = to the end of the data.
+  split_year: 2019     # The pass bar needs a profit both before and from this year.
+
+# Assumed round-trip cost per trade in pips (spread + slippage), as in the earlier research.
+costs_pips: {EURUSD: 0.9, GBPUSD: 1.2, USDJPY: 1.0}
+
+# The paper bot's rules (config.yaml), applied to every trade unless a strategy overrides them.
+rules:
+  risk_percent: 5            # Per trade, for the A$ illustration and the US-dollar cap.
+  starting_balance_aud: 1000
+  one_trade_per_pair: true
+  usd_cap_percent: 10        # null = off. 10 = at most two 5% trades betting the same way on the dollar.
+  breakeven_at_r: 1.0        # Stop to entry once price is +1R (null = off).
+  trail_atr: 3.0             # Then trail 3 x hourly ATR behind the best price (null = off).
+  target_r: 10.0             # Far target; the trail usually exits first (null = none).
+  max_hours: null            # Time limit per trade (null = none, as live).
+  max_hold_hours: 720        # Safety limit for trades that never exit.
+
+random_runs: 200       # Random-direction comparisons per strategy (same moments, stops and exits).
+random_seed: 20261017
+workers: 3             # Processes for the slow trend-v1 replay (1 = one at a time).
+min_trades: 100        # Fewer trades than this cannot pass.
+
+# Each strategy: enabled true/false, its settings, and "exits" to override the rules above for it.
+# python -m forex.lab list (menu option 4) describes each one with these settings.
+strategies:
+  trend-v1:            # The old strategy, as the reference to beat. Slow the first time only.
+    enabled: true
+
+  pd-sweep:            # Video 10:37: the previous day's high/low is run, then price reverses.
+    enabled: true
+    sessions: any      # any, or a list such as [London, "New York"] (first 4 hours from 08:00 local).
+    buffer_atr: 0.1    # Stop this many ATRs beyond the sweep hour's extreme.
+    min_stop_atr: 0.3
+    max_stop_atr: 3.0
+    target: rules      # rules (target_r, break-even, trail) or opposite (the other previous-day level).
+
+  pd-breakout:         # Video 9:19: price breaks through the previous day's high/low and keeps going.
+    enabled: true
+    sessions: any
+    stop_atr: 1.0
+
+  pd-magnet:           # Video 4:00-5:23: from the open, price heads for the nearer previous-day level.
+    enabled: true
+    sessions: [London, "New York"]
+    min_atr: 0.5       # Skip levels closer than this (costs would dominate) or further than max_atr.
+    max_atr: 3.0
+    stop_ratio: 1.0    # Stop distance = this x the distance to the target level.
+    exits: {breakeven_at_r: null, trail_atr: null, max_hours: 4}
