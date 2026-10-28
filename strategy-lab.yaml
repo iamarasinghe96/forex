@@ -10,6 +10,7 @@ data:
     - data/dukascopy-research.sqlite3
     - data/rebuilt/dukascopy-2012-2018.sqlite3
     - data/rebuilt/dukascopy-research.sqlite3
+    - data/dukascopy-history.sqlite3   # Made by tools\get-history.bat (2012 to the download day).
   # Used only if none of the above exist (e.g. on the VPS): the bot's own stored prices, about a year.
   fallback_databases:
     - data/paper-a1000.sqlite3

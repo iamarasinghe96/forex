@@ -149,3 +149,33 @@ def test_full_run_saves_reports_and_ledger(tmp_path: Path, monkeypatch: pytest.M
     assert (tmp_path / "reports" / "strategy-lab" / "latest.txt").read_text(encoding="utf-8") == summary
     assert lab.study() == 0 and "PREVIOUS DAY'S HIGH AND LOW" in capsys.readouterr().out
     assert any(p.name.endswith("previous-day-study.txt") for p in (tmp_path / "reports" / "strategy-lab").iterdir())
+
+
+def test_get_history_downloads_checks_and_imports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from forex.lab import get_history as gh
+    from forex.lab.data import load_history
+
+    real_run, calls = subprocess.run, []
+
+    def fake_run(command: list[str], check: bool) -> object:
+        if command[0] == "npx":  # Stand-in for dukascopy-node: its CSV layout, epoch-millisecond times.
+            calls.append(command)
+            slug, folder = command[command.index("-i") + 1], Path(command[command.index("-dir") + 1])
+            base = 110.0 if slug == "usdjpy" else 1.1
+            lines = ["timestamp,open,high,low,close"] + [
+                f"{int((START + timedelta(hours=k)).timestamp() * 1000)},{base},{base + 0.002},{base - 0.002},{base + 0.001}"
+                for k in range(48)]
+            (folder / f"{slug}-h1-bid-2012-01-01-2012-01-03.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return None
+        return real_run(command, check=check)  # The real normaliser.
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("forex.lab.get_history.shutil.which", lambda name: "npx")
+    monkeypatch.setattr("forex.lab.get_history.subprocess.run", fake_run)
+    assert gh.get_history("2012-01-01", "2012-01-03") == 0
+    assert len(calls) == 3 and all({"--yes", "dukascopy-node@1.50.0", "h1", "bid", "csv"} <= set(c) for c in calls)
+    history = load_history([gh.DATABASE], [], ["EURUSD", "GBPUSD", "USDJPY"])
+    assert {s: len(x.bars) for s, x in history.series.items()} == {"EURUSD": 48, "GBPUSD": 48, "USDJPY": 48}
+    assert gh.get_history("2012-01-01", "2012-01-03") == 0 and len(calls) == 3  # Already done: nothing fetched.

@@ -31,7 +31,7 @@ class DataSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     databases: list[Path] = [Path("data/dukascopy-2012-2018.sqlite3"), Path("data/dukascopy-research.sqlite3"),
                              Path("data/rebuilt/dukascopy-2012-2018.sqlite3"),
-                             Path("data/rebuilt/dukascopy-research.sqlite3")]
+                             Path("data/rebuilt/dukascopy-research.sqlite3"), Path("data/dukascopy-history.sqlite3")]
     fallback_databases: list[Path] = [Path("data/paper-a1000.sqlite3")]
     pairs: list[str] = ["EURUSD", "GBPUSD", "USDJPY"]
     start: date = date(2012, 4, 1)

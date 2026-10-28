@@ -131,7 +131,8 @@ def menu() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Strategy lab (research only)")
-    parser.add_argument("command", nargs="?", choices=["menu", "run", "study", "list"], default="menu")
+    parser.add_argument("command", nargs="?", choices=["menu", "run", "study", "list", "get-history"],
+                        default="menu")
     parser.add_argument("strategies", nargs="*", help="Strategy names for 'run' (default: every one that is on)")
     parser.add_argument("--open", action="store_true", help="Open the report when done (Windows)")
     args = parser.parse_args()
@@ -141,6 +142,9 @@ def main() -> int:
         return study(args.open)
     if args.command == "list":
         return listing()
+    if args.command == "get-history":
+        from forex.lab.get_history import get_history
+        return get_history()
     return menu()
 
 

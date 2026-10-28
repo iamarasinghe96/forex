@@ -115,5 +115,6 @@ def load_history(databases: Sequence[Path], fallback: Sequence[Path], pairs: Seq
         if merged:
             series[pair.upper()] = build_series(pair, list(merged.values()))
     if not series:
-        raise SystemExit(f"The databases {', '.join(map(str, found))} hold no H1 prices for {', '.join(pairs)}.")
+        raise SystemExit(f"The databases {', '.join(map(str, found))} hold no H1 prices for {', '.join(pairs)}. "
+                         "Download the history once with tools\\get-history.bat.")
     return History(series, found, used_fallback)
