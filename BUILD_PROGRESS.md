@@ -1184,3 +1184,23 @@ settings used), with `ledger.csv` and `latest.txt` beside it. Git ignores the fo
 **Tests:** 306 passed (8 new in `tests/test_lab.py`). Ruff is clean; mypy shows only the 2
 Windows-only errors.
 
+
+### One-command VPS setup (2026-11-08)
+
+BinaryLane lost the VPS disk (host failure, no backups) and gave us a fresh Windows install.
+`scripts/setup-vps.ps1` sets up a fresh server with one command, run in an Administrator PowerShell:
+
+    irm https://raw.githubusercontent.com/iamarasinghe96/forex/claude/determined-thompson-f4ewei/scripts/setup-vps.ps1 | iex
+
+It installs Git (latest Git for Windows) and Python 3.12.10 when they are missing, then:
+- clones or updates `C:\forex` on this branch;
+- creates `.venv` and installs `.[mt5,firebase,dev]`;
+- creates `data`, `logs` and `.secrets`;
+- runs the tests;
+- creates the desktop and Startup icons through `install-shortcuts.ps1`;
+- lists the manual steps (MT5 login, `.env`, the Firebase key).
+
+It never handles secrets, and it refuses a non-empty `C:\forex` that is not a clone. It has not
+been run yet: it was written in a Linux session without PowerShell, so it is checked by reading
+only. The paper account starts fresh at A$1,000; the lost local journal remains visible in the
+Firestore mirror.
